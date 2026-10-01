@@ -1,0 +1,12 @@
+{%- comment -%}
+  Gold Rate Pricer — Dynamic Live Gold Rate & Price Breakup
+  Everything is handled 100% dynamically from your backend.
+
+  USAGE:
+  1. Simply add this snippet: {% render 'gold-price-breakup' %}
+  OR
+  2. Paste this single script line anywhere on your Shopify store:
+     <script src="https://YOUR-APP-DOMAIN/embed.js" async></script>
+{%- endcomment -%}
+<div id="gold-price-breakup"></div>
+<script src="{{ app_url | default: 'http://localhost:3000' }}/embed.js" async></script>
