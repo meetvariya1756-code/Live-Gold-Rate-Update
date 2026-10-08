@@ -148,3 +148,62 @@ CREATE TABLE IF NOT EXISTS price_runs (
   finished_at  TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS price_runs_store_idx ON price_runs(store_id, started_at DESC);
+
+-- Support Requests (Chat & Call Support)
+CREATE TABLE IF NOT EXISTS support_requests (
+  id                  SERIAL PRIMARY KEY,
+  store_id            INTEGER REFERENCES stores(id) ON DELETE SET NULL,
+  client_user_id      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  store_name          TEXT NOT NULL,
+  shop_domain         TEXT NOT NULL,
+  client_name         TEXT NOT NULL,
+  client_email        TEXT,
+  client_phone        TEXT,
+  type                TEXT NOT NULL,                  -- 'chat' | 'call'
+  status              TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'in_progress' | 'resolved' | 'closed'
+  subject             TEXT,
+  message             TEXT,
+  preferred_call_time TEXT,                           -- e.g. "ASAP", "Morning (10 AM - 1 PM)", etc.
+  admin_notes         TEXT,
+  is_read_by_admin    BOOLEAN NOT NULL DEFAULT FALSE,
+  human_requested     BOOLEAN NOT NULL DEFAULT FALSE,
+  human_requested_at  TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS support_requests_status_idx ON support_requests(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS support_requests_store_idx ON support_requests(store_id, created_at DESC);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_requests' AND column_name='human_requested') THEN
+    ALTER TABLE support_requests ADD COLUMN human_requested BOOLEAN NOT NULL DEFAULT FALSE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_requests' AND column_name='human_requested_at') THEN
+    ALTER TABLE support_requests ADD COLUMN human_requested_at TIMESTAMPTZ;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_requests' AND column_name='call_accepted_at') THEN
+    ALTER TABLE support_requests ADD COLUMN call_accepted_at TIMESTAMPTZ;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_requests' AND column_name='closed_by') THEN
+    ALTER TABLE support_requests ADD COLUMN closed_by TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_requests' AND column_name='collaborator_code') THEN
+    ALTER TABLE support_requests ADD COLUMN collaborator_code TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='collaborator_code') THEN
+    ALTER TABLE stores ADD COLUMN collaborator_code TEXT;
+  END IF;
+END $$;
+
+-- Messages thread for support chats
+CREATE TABLE IF NOT EXISTS support_messages (
+  id                  SERIAL PRIMARY KEY,
+  request_id          INTEGER NOT NULL REFERENCES support_requests(id) ON DELETE CASCADE,
+  sender_role         TEXT NOT NULL,                  -- 'client' | 'admin' | 'bot'
+  sender_name         TEXT NOT NULL,
+  message             TEXT NOT NULL,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS support_messages_req_idx ON support_messages(request_id, created_at ASC);
+

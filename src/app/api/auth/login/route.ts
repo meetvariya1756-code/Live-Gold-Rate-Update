@@ -41,8 +41,8 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({ ok: true, user: userPayload });
     res.cookies.set(SESSION_COOKIE, await createSessionToken(userPayload), {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'none',
+      secure: true,
       path: '/',
       maxAge: 7 * 86400,
     });
@@ -88,8 +88,8 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({ ok: true, user: userPayload });
   res.cookies.set(SESSION_COOKIE, await createSessionToken(userPayload), {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'none',
+    secure: true,
     path: '/',
     maxAge: 7 * 86400,
   });
