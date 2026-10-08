@@ -95,9 +95,13 @@ h3 { font-size: 13px; font-weight: 600; margin: 0; color: #303030; }
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 20px;
 }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
-.brand-dot { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, #f5c542, #b8860b); }
+.topbar a { color: #ffffff; text-decoration: none; }
+.topbar a:hover { text-decoration: none; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: #ffffff !important; font-size: 14px; letter-spacing: -0.01em; }
+.brand:hover { color: #ffffff !important; text-decoration: none; }
+.brand-dot { width: 20px; height: 20px; border-radius: 6px; background: linear-gradient(135deg, #f5c542, #b8860b); flex-shrink: 0; }
 .topbar button { background: transparent; color: #ddd; border: 1px solid #444; }
+.topbar button:hover { background: rgba(255, 255, 255, 0.1); border-color: #666; color: #fff; }
 
 .page { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }

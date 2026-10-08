@@ -55,7 +55,7 @@ export function TopBar() {
 
       <div className="topbar">
         <div className="row" style={{ gap: 18 }}>
-          <Link href="/" className="brand">
+          <Link href="/" className="brand" style={{ color: '#ffffff' }}>
             <span className="brand-dot" /> Gold Rate Pricer
           </Link>
           {user?.role === 'admin' && (
