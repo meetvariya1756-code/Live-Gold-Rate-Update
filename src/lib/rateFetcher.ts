@@ -17,14 +17,20 @@ export interface LiveRateResult {
  */
 export async function fetchLiveMarketRates(): Promise<LiveRateResult | null> {
   try {
-    // 1. Try Gold API
-    const spotRes = await fetch('https://api.gold-api.com/price/XAU', { cache: 'no-store' });
+    // 1. Try Gold API with 3.5s timeout
+    const spotRes = await fetch('https://api.gold-api.com/price/XAU', {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3500),
+    });
     if (spotRes.ok) {
       const spotData = await spotRes.json();
       if (spotData && spotData.price) {
         let inrPerUSD = 88.5;
         try {
-          const fxRes = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' });
+          const fxRes = await fetch('https://open.er-api.com/v6/latest/USD', {
+            cache: 'no-store',
+            signal: AbortSignal.timeout(2500),
+          });
           if (fxRes.ok) {
             const fxData = await fxRes.json();
             if (fxData?.rates?.INR) inrPerUSD = fxData.rates.INR;

@@ -102,7 +102,7 @@ export function AdminNotificationListener({ isAdmin }: { isAdmin: boolean }) {
     };
 
     checkNotifications();
-    const interval = setInterval(checkNotifications, 4000);
+    const interval = setInterval(checkNotifications, 12000);
     return () => clearInterval(interval);
   }, [isAdmin]);
 

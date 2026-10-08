@@ -41,7 +41,7 @@ export function TopBar() {
         .catch(() => {});
     };
     fetchStats();
-    const interval = setInterval(fetchStats, 6000);
+    const interval = setInterval(fetchStats, 15000);
     return () => clearInterval(interval);
   }, [user]);
 

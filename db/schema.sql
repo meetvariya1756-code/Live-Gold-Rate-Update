@@ -207,3 +207,11 @@ CREATE TABLE IF NOT EXISTS support_messages (
 );
 CREATE INDEX IF NOT EXISTS support_messages_req_idx ON support_messages(request_id, created_at ASC);
 
+-- Performance Indexes for fast loading
+CREATE INDEX IF NOT EXISTS stores_client_user_idx ON stores(client_user_id);
+CREATE INDEX IF NOT EXISTS products_store_idx ON products(store_id);
+CREATE INDEX IF NOT EXISTS variants_store_idx ON variants(store_id);
+CREATE INDEX IF NOT EXISTS variant_configs_store_idx ON variant_configs(store_id);
+CREATE INDEX IF NOT EXISTS variant_configs_store_gid_idx ON variant_configs(store_id, variant_gid);
+CREATE INDEX IF NOT EXISTS support_requests_client_user_idx ON support_requests(client_user_id);
+

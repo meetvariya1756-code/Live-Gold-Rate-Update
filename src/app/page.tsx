@@ -58,17 +58,24 @@ export default function Home() {
 
   const loadData = async () => {
     try {
-      const meRes = await fetch('/api/auth/me');
-      if (meRes.ok) {
-        const u = (await meRes.json()).user;
+      const [meRes, s] = await Promise.all([
+        fetch('/api/auth/me')
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        api<StoreItem[]>('/api/stores').catch((e) => {
+          throw e;
+        }),
+      ]);
+
+      if (meRes?.user) {
+        const u = meRes.user;
         setUser(u);
-        if (u?.role === 'admin') {
+        if (u.role === 'admin') {
           api<{ clients: ClientOption[] }>('/api/admin/clients')
             .then((res) => setClients(res.clients))
             .catch(() => {});
         }
       }
-      const s = await api<StoreItem[]>('/api/stores');
       setStores(s);
     } catch (e: any) {
       toast(e.message, true);

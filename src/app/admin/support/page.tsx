@@ -94,7 +94,7 @@ function AdminSupportContent() {
 
   useEffect(() => {
     loadRequests();
-    const interval = setInterval(loadRequests, 6000);
+    const interval = setInterval(loadRequests, 10000);
     return () => clearInterval(interval);
   }, []);
 
