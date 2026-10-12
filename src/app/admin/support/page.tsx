@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Spinner, toast } from '@/components/ui';
@@ -24,7 +24,12 @@ import {
   ArrowRight,
   PhoneCall,
   Sparkles,
+  Mic,
+  Paperclip,
+  Smile,
+  Image as ImageIcon,
 } from 'lucide-react';
+import { MessageMedia, AudioRecorder, EmojiPickerPopover } from '@/components/ChatMedia';
 
 interface SupportRequest {
   id: number;
@@ -55,6 +60,11 @@ interface Message {
   sender_role: 'admin' | 'client' | 'bot';
   sender_name: string;
   message: string;
+  message_type?: string;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  duration_seconds?: number | null;
   created_at: string;
 }
 
@@ -73,6 +83,82 @@ function AdminSupportContent() {
   const [adminNotes, setAdminNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
+
+  // Admin multimedia support states
+  const [showAdminEmoji, setShowAdminEmoji] = useState(false);
+  const [isRecordingAdminVoice, setIsRecordingAdminVoice] = useState(false);
+  const adminFileInputRef = useRef<HTMLInputElement>(null);
+
+  const sendAdminMedia = async (mediaInfo: {
+    file_url: string;
+    file_name?: string;
+    file_size?: number;
+    mime_type?: string;
+    message_type: 'image' | 'audio' | 'file';
+    duration_seconds?: number;
+  }) => {
+    if (!selectedTicket || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/support/${selectedTicket.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mediaInfo),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages((prev) => [...prev, data.message]);
+        loadRequests();
+      }
+    } catch (e: any) {
+      toast(e.message || 'Error sending media', true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAdminVoiceComplete = async (blob: Blob, durationSec: number) => {
+    setBusy(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', blob, `voice-admin-${Date.now()}.webm`);
+      formData.append('duration', String(durationSec));
+      const res = await fetch('/api/support/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Voice upload failed');
+      const data = await res.json();
+      await sendAdminMedia(data);
+    } catch (e: any) {
+      toast(e.message || 'Failed to upload voice note', true);
+    } finally {
+      setBusy(false);
+      setIsRecordingAdminVoice(false);
+    }
+  };
+
+  const handleAdminFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/support/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('File upload failed');
+      const data = await res.json();
+      await sendAdminMedia(data);
+    } catch (e: any) {
+      toast(e.message || 'Failed to upload attachment', true);
+    } finally {
+      setBusy(false);
+      if (adminFileInputRef.current) adminFileInputRef.current.value = '';
+    }
+  };
 
   const loadRequests = async () => {
     try {
@@ -1067,57 +1153,155 @@ function AdminSupportContent() {
                         )}
                         <span>• {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
-                      <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{m.message}</div>
+                      {m.message && (!m.file_url || (m.message !== '🎤 Voice Message' && m.message !== '📷 Image Attachment' && !m.message.startsWith('📎 '))) && (
+                        <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.45, marginBottom: m.file_url ? 6 : 0 }}>
+                          {m.message}
+                        </div>
+                      )}
+                      <MessageMedia msg={m} isSender={isAdmin} />
                     </div>
                   );
                 })
               )}
             </div>
 
-            {/* Admin Message Reply Form */}
-            <form
-              onSubmit={sendAdminReply}
+            {/* Admin Message Reply Form with Multimedia Support */}
+            <div
               style={{
                 padding: '12px 20px',
-                display: 'flex',
-                gap: 8,
                 background: '#ffffff',
                 borderTop: '1px solid #e5e7eb',
+                position: 'relative',
               }}
             >
+              {showAdminEmoji && (
+                <EmojiPickerPopover
+                  onSelect={(emoji) => setReplyText((prev) => prev + emoji)}
+                  onClose={() => setShowAdminEmoji(false)}
+                />
+              )}
+
               <input
-                className="plain"
-                style={{
-                  flex: 1,
-                  background: '#ffffff',
-                  color: '#111827',
-                  border: '1px solid #d1d5db',
-                  borderRadius: 8,
-                  padding: '8px 12px',
-                  fontSize: 13,
-                }}
-                placeholder="Type a reply to the merchant..."
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                disabled={busy}
+                type="file"
+                ref={adminFileInputRef}
+                onChange={handleAdminFileUpload}
+                accept="image/*,video/*,.pdf,.doc,.docx,.txt,.csv"
+                style={{ display: 'none' }}
               />
-              <button
-                type="submit"
-                disabled={busy || !replyText.trim()}
-                style={{
-                  background: replyText.trim() ? '#2563eb' : '#93c5fd',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: 8,
-                  padding: '8px 16px',
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: replyText.trim() ? 'pointer' : 'default',
-                }}
-              >
-                {busy ? <Spinner /> : 'Send Reply'}
-              </button>
-            </form>
+
+              {isRecordingAdminVoice ? (
+                <AudioRecorder
+                  onRecordingComplete={handleAdminVoiceComplete}
+                  onCancel={() => setIsRecordingAdminVoice(false)}
+                />
+              ) : (
+                <form
+                  onSubmit={sendAdminReply}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  {/* Emoji Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminEmoji((prev) => !prev)}
+                    title="Insert emoji"
+                    style={{
+                      background: '#f3f4f6',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 8,
+                      padding: '8px 10px',
+                      cursor: 'pointer',
+                      color: '#4b5563',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Smile size={18} />
+                  </button>
+
+                  {/* Attachment Button */}
+                  <button
+                    type="button"
+                    onClick={() => adminFileInputRef.current?.click()}
+                    title="Attach image or file"
+                    style={{
+                      background: '#f3f4f6',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 8,
+                      padding: '8px 10px',
+                      cursor: 'pointer',
+                      color: '#4b5563',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Paperclip size={18} />
+                  </button>
+
+                  {/* Mic Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsRecordingAdminVoice(true)}
+                    title="Record voice note"
+                    style={{
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      borderRadius: 8,
+                      padding: '8px 10px',
+                      cursor: 'pointer',
+                      color: '#dc2626',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Mic size={18} />
+                  </button>
+
+                  <input
+                    className="plain"
+                    style={{
+                      flex: 1,
+                      background: '#ffffff',
+                      color: '#111827',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                      fontSize: 13,
+                    }}
+                    placeholder="Type a reply to the merchant, or send voice / attachments..."
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    disabled={busy}
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={busy || !replyText.trim()}
+                    style={{
+                      background: replyText.trim() ? '#2563eb' : '#93c5fd',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '8px 18px',
+                      fontWeight: 700,
+                      fontSize: 13,
+                      cursor: replyText.trim() ? 'pointer' : 'default',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    {busy ? <Spinner /> : 'Send Reply'}
+                  </button>
+                </form>
+              )}
+            </div>
 
             {/* Admin Internal Notes */}
             <div

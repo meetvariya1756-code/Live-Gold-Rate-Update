@@ -98,8 +98,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Phone number is required for Call Support requests.' }, { status: 400 });
   }
 
-  if (type === 'chat' && !message) {
-    return NextResponse.json({ error: 'Please enter a message to start Chat Support.' }, { status: 400 });
+  const messageType = body.message_type || 'text';
+  const fileUrl = body.file_url || null;
+  const fileName = body.file_name || null;
+  const fileSize = body.file_size ? parseInt(String(body.file_size), 10) : null;
+  const mimeType = body.mime_type || null;
+  const durationSeconds = body.duration_seconds ? parseInt(String(body.duration_seconds), 10) : null;
+
+  if (type === 'chat' && !message && !fileUrl) {
+    return NextResponse.json({ error: 'Please enter a message or attachment to start Chat Support.' }, { status: 400 });
+  }
+
+  let finalMessage = message;
+  if (!finalMessage && fileUrl) {
+    if (messageType === 'audio') finalMessage = '🎤 Voice Message';
+    else if (messageType === 'image') finalMessage = '📷 Image Attachment';
+    else finalMessage = fileName ? `📎 ${fileName}` : '📎 Attachment';
   }
 
   // Update store collaborator code if provided
@@ -136,25 +150,39 @@ export async function POST(req: NextRequest) {
       clientPhone,
       type,
       subject,
-      message,
+      finalMessage,
       preferredCallTime,
       collaboratorCode,
     ]
   );
 
-  // If initial message provided, also create first message in support_messages
-  if (message && newRequest?.id) {
+  // If initial message or attachment provided, also create first message in support_messages
+  if (finalMessage && newRequest?.id) {
     await q(
-      `INSERT INTO support_messages (request_id, sender_role, sender_name, message)
-       VALUES ($1, $2, $3, $4)`,
-      [newRequest.id, user.role, clientName, message]
+      `INSERT INTO support_messages (
+         request_id, sender_role, sender_name, message,
+         message_type, file_url, file_name, file_size, mime_type, duration_seconds
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        newRequest.id,
+        user.role,
+        clientName,
+        finalMessage,
+        messageType,
+        fileUrl,
+        fileName,
+        fileSize,
+        mimeType,
+        durationSeconds,
+      ]
     );
 
     // If client created a chat, bot sends initial greeting response
     if (type === 'chat' && user.role === 'client') {
       const botReply = `Hello ${clientName}! I am the Gold Rate Pricer Support Assistant. 
 
-I received your message: "${message.slice(0, 80)}${message.length > 80 ? '...' : ''}". 
+I received your ${messageType === 'audio' ? 'voice message' : messageType === 'image' ? 'image' : 'inquiry'}. 
 
 How can I help you, or would you like to connect directly with a live human support specialist?`;
 

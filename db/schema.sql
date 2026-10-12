@@ -52,6 +52,9 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='token_expires_at') THEN
     ALTER TABLE stores ADD COLUMN token_expires_at TIMESTAMPTZ;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='refresh_token_enc') THEN
+    ALTER TABLE stores ADD COLUMN refresh_token_enc TEXT;
+  END IF;
 END $$;
 
 -- One row per metal / purity per store. rate = price per gram in store currency.
@@ -203,9 +206,37 @@ CREATE TABLE IF NOT EXISTS support_messages (
   sender_role         TEXT NOT NULL,                  -- 'client' | 'admin' | 'bot'
   sender_name         TEXT NOT NULL,
   message             TEXT NOT NULL,
+  message_type        TEXT NOT NULL DEFAULT 'text',   -- 'text' | 'image' | 'file' | 'audio'
+  file_url            TEXT,                           -- URL to uploaded image, file or voice note
+  file_name           TEXT,                           -- Original file name
+  file_size           INTEGER,                        -- File size in bytes
+  mime_type           TEXT,                           -- MIME type (e.g. image/png, audio/webm)
+  duration_seconds    INTEGER,                        -- For voice / audio messages
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS support_messages_req_idx ON support_messages(request_id, created_at ASC);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_messages' AND column_name='message_type') THEN
+    ALTER TABLE support_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'text';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_messages' AND column_name='file_url') THEN
+    ALTER TABLE support_messages ADD COLUMN file_url TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_messages' AND column_name='file_name') THEN
+    ALTER TABLE support_messages ADD COLUMN file_name TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_messages' AND column_name='file_size') THEN
+    ALTER TABLE support_messages ADD COLUMN file_size INTEGER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_messages' AND column_name='mime_type') THEN
+    ALTER TABLE support_messages ADD COLUMN mime_type TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_messages' AND column_name='duration_seconds') THEN
+    ALTER TABLE support_messages ADD COLUMN duration_seconds INTEGER;
+  END IF;
+END $$;
 
 -- Performance Indexes for fast loading
 CREATE INDEX IF NOT EXISTS stores_client_user_idx ON stores(client_user_id);

@@ -55,16 +55,16 @@ export function TopBar() {
 
       <div className="topbar">
         <div className="row" style={{ gap: 18 }}>
-          <Link href="/" className="brand" style={{ color: '#ffffff' }}>
+          <Link href={user?.role === 'admin' ? '/admin' : '/'} className="brand" style={{ color: '#ffffff' }}>
             <span className="brand-dot" /> Gold Rate Pricer
           </Link>
           {user?.role === 'admin' && (
             <nav className="row" style={{ gap: 14, marginLeft: 8 }}>
               <Link
-                href="/"
+                href="/admin"
                 style={{
-                  color: path === '/' || path.startsWith('/stores') ? '#fff' : '#aaa',
-                  fontWeight: path === '/' || path.startsWith('/stores') ? 700 : 500,
+                  color: path === '/admin' || path === '/' ? '#fff' : '#aaa',
+                  fontWeight: path === '/admin' || path === '/' ? 700 : 500,
                   fontSize: 13,
                 }}
               >
@@ -115,23 +115,25 @@ export function TopBar() {
         <div className="row" style={{ gap: 12 }}>
           {user && (
             <div className="row" style={{ gap: 6, fontSize: 12, color: '#ccc' }}>
-              <span
-                style={{
-                  background: user.role === 'admin' ? '#332600' : '#1e3322',
-                  color: user.role === 'admin' ? '#ffd700' : '#88e09f',
-                  border: `1px solid ${user.role === 'admin' ? '#7a5a00' : '#2d6339'}`,
-                  padding: '2px 8px',
-                  borderRadius: 12,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                {user.role === 'admin' ? <Crown size={12} /> : <User size={12} />}
-                <span>{user.role === 'admin' ? 'Admin' : 'Client'}</span>
-              </span>
+              {user.role === 'admin' && (
+                <span
+                  style={{
+                    background: '#332600',
+                    color: '#ffd700',
+                    border: '1px solid #7a5a00',
+                    padding: '2px 8px',
+                    borderRadius: 12,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <Crown size={12} />
+                  <span>Admin</span>
+                </span>
+              )}
               <span style={{ fontWeight: 600, color: '#fff' }}>{user.name}</span>
             </div>
           )}

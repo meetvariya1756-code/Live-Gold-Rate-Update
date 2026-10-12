@@ -85,6 +85,18 @@ export default function StorePage() {
     setBusy('');
   };
 
+  const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.user) setCurrentUser(d.user);
+      })
+      .catch(() => {});
+  }, []);
+
   const sync = async () => {
     setBusy('sync');
     try {
@@ -95,9 +107,28 @@ export default function StorePage() {
     } catch (e: any) { toast(e.message, true); }
     setBusy('');
   };
-  const [reloadKey, setReloadKey] = useState(0);
 
-  if (!store) return <div className="page"><div className="empty">Loading…</div></div>;
+  // Auto-connect and sync products immediately if catalog is empty
+  useEffect(() => {
+    if (!store) return;
+    if (store.products === 0 && !busy) {
+      setBusy('sync');
+      api(`/api/stores/${storeId}/sync`, { method: 'POST' })
+        .then((r) => {
+          if (r?.products > 0) {
+            toast(`Auto-connected: ${r.products} products synchronized from Shopify!`);
+          }
+          loadStore();
+          setReloadKey((k) => k + 1);
+        })
+        .catch((err) => {
+          console.warn('Initial auto-sync:', err);
+        })
+        .finally(() => setBusy(''));
+    }
+  }, [store?.id, store?.products]);
+
+  if (!store) return <div className="page"><div className="empty"><Spinner /> Connecting to store…</div></div>;
   const pct = store.variants ? Math.round((store.configured / store.variants) * 100) : 0;
   const baseKeys = new Set<string>();
   for (const m of new Set(derived.map((r) => r.metal))) {
@@ -107,18 +138,22 @@ export default function StorePage() {
   const lastRateUpdate = (rates as (MetalRate & { updated_at?: string })[])
     .map((r) => r.updated_at).filter(Boolean).sort().pop() ?? null;
 
+  const isAdmin = currentUser?.role === 'admin';
+
   return (
     <div className="page">
       <div className="page-head">
         <div className="row" style={{ flexWrap: 'nowrap', alignItems: 'flex-start', gap: 12 }}>
-          <Link href="/" className="btn-back" title="Back to stores" aria-label="Back to stores">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
-            <span>Back</span>
-          </Link>
+          {isAdmin && (
+            <Link href="/admin" className="btn-back" title="Back to Admin" aria-label="Back to Admin">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+              <span>Admin</span>
+            </Link>
+          )}
           <div>
-            <div className="crumbs"><Link href="/">Stores</Link> /</div>
+            <div className="crumbs">{isAdmin ? <Link href="/admin">Stores</Link> : <span>Store</span>} /</div>
             <h1>{store.name}</h1>
             <div className="muted small">{store.shop_domain} · {store.currency}</div>
           </div>
@@ -132,8 +167,10 @@ export default function StorePage() {
         </div>
       </div>
 
-      {!store.last_synced_at && (
-        <div className="banner info"><Spinner /> First product sync is running in the background. Click <b>Sync products</b> in a minute if the list is empty.</div>
+      {store.products === 0 && (
+        <div className="banner info" style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#93c5fd' }}>
+          <Spinner /> <b>Auto-connecting to Shopify:</b> Products are synchronizing directly from your store catalog… They will appear automatically below in a few moments.
+        </div>
       )}
       {!store.metafield_ready && store.last_synced_at && (
         <div className="banner warn">The price-breakup metafield definition could not be created. Check the token has the write_products scope, then Sync again.</div>

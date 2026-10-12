@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 // Shopify Admin GraphQL client + the queries/mutations this app needs.
 
 export class ShopifyError extends Error {
@@ -19,6 +21,145 @@ export function normalizeDomain(input: string): string {
   let d = input.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   if (!d.includes('.')) d = `${d}.myshopify.com`;
   return d;
+}
+
+/**
+ * Returns the reliable public base URL, resolving proxies and preventing 0.0.0.0 redirects.
+ */
+export function getAppBaseUrl(req: Request): string {
+  const envUrl = process.env.SHOPIFY_APP_URL?.trim().replace(/\/$/, '');
+  if (envUrl && !envUrl.includes('0.0.0.0')) return envUrl;
+
+  const fwdHost = req.headers.get('x-forwarded-host');
+  if (fwdHost && !fwdHost.includes('0.0.0.0')) {
+    const proto = req.headers.get('x-forwarded-proto') || 'https';
+    return `${proto}://${fwdHost}`;
+  }
+
+  const host = req.headers.get('host');
+  if (host && !host.includes('0.0.0.0')) {
+    const proto = req.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
+    return `${proto}://${host}`;
+  }
+
+  return 'http://localhost:3000';
+}
+
+/**
+ * Exchanges authorization code from Shopify OAuth redirect for a permanent offline access token.
+ */
+export async function exchangeOAuthCodeForAccessToken(
+  shop_domain: string,
+  code: string,
+): Promise<{ access_token: string; scope: string; expires_in?: number; refresh_token?: string }> {
+  const domain = normalizeDomain(shop_domain);
+  const clientId = process.env.SHOPIFY_API_KEY?.trim();
+  const clientSecret = process.env.SHOPIFY_API_SECRET?.trim();
+  if (!clientId || !clientSecret) {
+    throw new ShopifyError('Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET in environment variables');
+  }
+
+  const base = process.env.SHOPIFY_BASE_URL_OVERRIDE || `https://${domain}`;
+  const url = `${base}/admin/oauth/access_token`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code: code.trim(),
+      expiring: 1,
+    }),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new ShopifyError(`Shopify OAuth token exchange failed (${res.status}): ${txt}`, res.status);
+  }
+
+  const json = await res.json();
+  if (!json.access_token) {
+    throw new ShopifyError(`Invalid Shopify OAuth token response: ${JSON.stringify(json)}`);
+  }
+  return json;
+}
+
+export async function refreshOAuthAccessToken(
+  shop_domain: string,
+  refreshToken: string,
+): Promise<{ access_token: string; expires_in: number; refresh_token: string }> {
+  const domain = normalizeDomain(shop_domain);
+  const clientId = process.env.SHOPIFY_API_KEY?.trim();
+  const clientSecret = process.env.SHOPIFY_API_SECRET?.trim();
+  if (!clientId || !clientSecret) {
+    throw new ShopifyError('Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET in environment variables');
+  }
+
+  const base = process.env.SHOPIFY_BASE_URL_OVERRIDE || `https://${domain}`;
+  const url = `${base}/admin/oauth/access_token`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken.trim(),
+    }),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new ShopifyError(`Shopify token refresh failed (${res.status}): ${txt}`, res.status);
+  }
+
+  const json = await res.json();
+  if (!json.access_token) {
+    throw new ShopifyError(`Invalid Shopify token refresh response: ${JSON.stringify(json)}`);
+  }
+  return json;
+}
+
+/**
+ * Verifies Shopify HMAC query parameter against the app secret.
+ */
+export function verifyShopifyHmac(searchParams: URLSearchParams, secret: string): boolean {
+  const hmac = searchParams.get('hmac');
+  if (!hmac || !secret) return false;
+
+  const map: Record<string, string> = {};
+  searchParams.forEach((val, key) => {
+    if (key !== 'hmac' && key !== 'signature') {
+      map[key] = val;
+    }
+  });
+
+  const message = Object.keys(map)
+    .sort()
+    .map((k) => `${k}=${map[k]}`)
+    .join('&');
+
+  try {
+    const generated = crypto.createHmac('sha256', secret).update(message).digest('hex');
+    return crypto.timingSafeEqual(Buffer.from(generated), Buffer.from(hmac));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verifies Shopify Webhook HMAC header (X-Shopify-Hmac-Sha256)
+ */
+export function verifyShopifyWebhookHmac(rawBody: string, hmacHeader: string | null, secret: string): boolean {
+  if (!hmacHeader || !secret) return false;
+  try {
+    const generated = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
+    return crypto.timingSafeEqual(Buffer.from(generated), Buffer.from(hmacHeader));
+  } catch {
+    return false;
+  }
 }
 
 export async function fetchAccessTokenWithClientCredentials(

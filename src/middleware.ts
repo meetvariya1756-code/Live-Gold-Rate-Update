@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE, verifySessionToken } from '@/lib/session';
 
-const PUBLIC = ['/login', '/api/auth/login', '/api/cron/', '/api/public/', '/embed.js'];
+const PUBLIC = [
+  '/login',
+  '/admin/login',
+  '/api/auth/login',
+  '/api/auth/shopify',
+  '/api/auth/shopify-direct',
+  '/api/auth/callback',
+  '/api/webhooks/',
+  '/api/cron/',
+  '/api/public/',
+  '/uploads/',
+  '/embed.js',
+];
 
 export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+  const { pathname, searchParams } = req.nextUrl;
   if (PUBLIC.some((p) => pathname.startsWith(p))) return NextResponse.next();
 
   const session = await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
@@ -19,11 +31,28 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // If request contains Shopify 'shop' parameter, seamlessly authenticate without login prompt
+  const shop = searchParams.get('shop');
+  if (shop && !pathname.startsWith('/api/')) {
+    const appBase =
+      process.env.SHOPIFY_APP_URL?.trim().replace(/\/$/, '') ||
+      (req.headers.get('x-forwarded-host') && !req.headers.get('x-forwarded-host')?.includes('0.0.0.0')
+        ? `${req.headers.get('x-forwarded-proto') || 'https'}://${req.headers.get('x-forwarded-host')}`
+        : req.nextUrl.origin.replace('0.0.0.0', 'localhost'));
+    const directAuthUrl = new URL('/api/auth/shopify-direct', appBase);
+    searchParams.forEach((val, key) => directAuthUrl.searchParams.set(key, val));
+    return NextResponse.redirect(directAuthUrl);
+  }
+
   if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const url = req.nextUrl.clone();
-  url.pathname = '/login';
-  url.searchParams.set('next', pathname);
+  if (pathname.startsWith('/admin')) {
+    url.pathname = '/admin/login';
+  } else {
+    url.pathname = '/login';
+    url.searchParams.set('next', pathname);
+  }
   return NextResponse.redirect(url);
 }
 

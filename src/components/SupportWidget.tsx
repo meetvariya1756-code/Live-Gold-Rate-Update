@@ -21,7 +21,12 @@ import {
   Zap,
   Gem,
   ShieldCheck,
+  Mic,
+  Paperclip,
+  Smile,
+  Image as ImageIcon,
 } from 'lucide-react';
+import { MessageMedia, AudioRecorder, EmojiPickerPopover } from '@/components/ChatMedia';
 
 interface SupportRequest {
   id: number;
@@ -47,6 +52,11 @@ interface Message {
   sender_role: 'admin' | 'client' | 'bot';
   sender_name: string;
   message: string;
+  message_type?: string;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  duration_seconds?: number | null;
   created_at: string;
 }
 
@@ -164,11 +174,118 @@ export function SupportWidget({
     return () => clearInterval(interval);
   }, [isOpen, currentTicket?.id, currentCallTicket?.id]);
 
+  // Media & Chat enhancements
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const sendMediaMessage = async (mediaInfo: {
+    file_url: string;
+    file_name?: string;
+    file_size?: number;
+    mime_type?: string;
+    message_type: 'image' | 'audio' | 'file';
+    duration_seconds?: number;
+  }) => {
+    setIsSending(true);
+    const storeName = store?.name || user?.name || 'My Jewellery Store';
+    const shopDomain = store?.shop_domain || (user?.username ? `${user.username}.myshopify.com` : 'store.myshopify.com');
+    const clientName = user?.name || 'Store Owner';
+
+    try {
+      if (!currentTicket || currentTicket.status === 'closed') {
+        const res = await fetch('/api/support', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'chat',
+            store_id: store?.id,
+            store_name: storeName,
+            shop_domain: shopDomain,
+            client_name: clientName,
+            subject: mediaInfo.message_type === 'audio' ? 'Voice Message' : mediaInfo.message_type === 'image' ? 'Image Attachment' : 'File Attachment',
+            ...mediaInfo,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.request) {
+          setCurrentTicket(data.request);
+          const msgRes = await fetch(`/api/support/${data.request.id}`);
+          if (msgRes.ok) {
+            const msgData = await msgRes.json();
+            setMessages(msgData.messages || []);
+          }
+        }
+      } else {
+        const res = await fetch(`/api/support/${currentTicket.id}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mediaInfo),
+        });
+        if (res.ok) {
+          const refreshRes = await fetch(`/api/support/${currentTicket.id}`);
+          if (refreshRes.ok) {
+            const refreshData = await refreshRes.json();
+            setMessages(refreshData.messages || []);
+          }
+        }
+      }
+    } catch (e: any) {
+      toast(e.message || 'Error sending attachment', true);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleVoiceRecordingComplete = async (blob: Blob, durationSec: number) => {
+    setIsSending(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', blob, `voice-${Date.now()}.webm`);
+      formData.append('duration', String(durationSec));
+      const res = await fetch('/api/support/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Voice upload failed');
+      const data = await res.json();
+      await sendMediaMessage(data);
+    } catch (e: any) {
+      toast(e.message || 'Failed to upload voice message', true);
+    } finally {
+      setIsSending(false);
+      setIsRecordingVoice(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsSending(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/support/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('File upload failed');
+      const data = await res.json();
+      await sendMediaMessage(data);
+    } catch (e: any) {
+      toast(e.message || 'Failed to upload file', true);
+    } finally {
+      setIsSending(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const sendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputText).trim();
     if (!text || isSending) return;
 
     setInputText('');
+    setShowEmojiPicker(false);
     setIsSending(true);
 
     const storeName = store?.name || user?.name || 'My Jewellery Store';
@@ -314,6 +431,9 @@ export function SupportWidget({
       setSubmittingCall(false);
     }
   };
+
+  const hasAdminResponded = messages.some((m) => m.sender_role === 'admin');
+  const isHumanActive = hasAdminResponded || currentTicket?.status === 'in_progress';
 
   return (
     <>
@@ -474,8 +594,10 @@ export function SupportWidget({
                 <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
                   {currentTicket?.status === 'closed'
                     ? 'Chat session ended'
-                    : currentTicket?.human_requested
+                    : isHumanActive
                     ? 'Live Agent Connected'
+                    : currentTicket?.human_requested
+                    ? 'Connecting to Specialist...'
                     : 'Automated Assistant & Live Agents'}
                 </div>
               </div>
@@ -530,7 +652,10 @@ export function SupportWidget({
                           wordBreak: 'break-word',
                         }}
                       >
-                        {m.message}
+                        {m.message && (!m.file_url || (m.message !== '🎤 Voice Message' && m.message !== '📷 Image Attachment' && !m.message.startsWith('📎 '))) && (
+                          <div style={{ marginBottom: m.file_url ? 6 : 0 }}>{m.message}</div>
+                        )}
+                        <MessageMedia msg={m} isSender={isUser} />
                       </div>
                       <span
                         style={{
@@ -674,8 +799,8 @@ export function SupportWidget({
                   </div>
                 )}
 
-                {/* Connect with Human Agent Option */}
-                {currentTicket?.status !== 'closed' && !currentTicket?.human_requested && (
+                {/* Connect with Human Agent Option (hidden when human agent is already connected or active) */}
+                {currentTicket?.status !== 'closed' && !currentTicket?.human_requested && !isHumanActive && (
                   <div style={{ textAlign: 'center', margin: '6px 0' }}>
                     <button
                       type="button"
@@ -700,7 +825,8 @@ export function SupportWidget({
                   </div>
                 )}
 
-                {currentTicket?.status !== 'closed' && currentTicket?.human_requested && (
+                {/* Waiting Banner (only shown while WAITING for the human specialist to respond) */}
+                {currentTicket?.status !== 'closed' && currentTicket?.human_requested && !isHumanActive && (
                   <div
                     style={{
                       background: '#ecfdf5',
@@ -730,62 +856,152 @@ export function SupportWidget({
               {currentTicket?.status !== 'closed' ? (
                 <div
                   style={{
-                    padding: '12px 14px',
+                    padding: '10px 14px',
                     background: '#ffffff',
                     borderTop: '1px solid #e2e8f0',
+                    position: 'relative',
                   }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      background: '#f1f5f9',
-                      borderRadius: 24,
-                      padding: '6px 14px',
-                      border: '1px solid #cbd5e1',
-                    }}
-                  >
-                    <input
-                      type="text"
-                      placeholder="Compose your message..."
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          sendMessage();
-                        }
-                      }}
-                      style={{
-                        flex: 1,
-                        border: 'none',
-                        background: 'transparent',
-                        outline: 'none',
-                        fontSize: 13,
-                        color: '#0f172a',
-                      }}
+                  {showEmojiPicker && (
+                    <EmojiPickerPopover
+                      onSelect={(emoji) => setInputText((prev) => prev + emoji)}
+                      onClose={() => setShowEmojiPicker(false)}
                     />
-                    <button
-                      type="button"
-                      onClick={() => sendMessage()}
-                      disabled={isSending || !inputText.trim()}
+                  )}
+
+                  {/* Hidden file input */}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    accept="image/*,video/*,.pdf,.doc,.docx,.txt,.csv"
+                    style={{ display: 'none' }}
+                  />
+
+                  {isRecordingVoice ? (
+                    <AudioRecorder
+                      onRecordingComplete={handleVoiceRecordingComplete}
+                      onCancel={() => setIsRecordingVoice(false)}
+                    />
+                  ) : (
+                    <div
                       style={{
-                        background: inputText.trim() ? '#2563eb' : 'transparent',
-                        color: inputText.trim() ? '#ffffff' : '#94a3b8',
-                        border: 'none',
-                        borderRadius: '50%',
-                        width: 32,
-                        height: 32,
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: inputText.trim() ? 'pointer' : 'default',
-                        transition: 'background 0.2s ease',
+                        gap: 6,
+                        background: '#f1f5f9',
+                        borderRadius: 24,
+                        padding: '4px 8px 4px 12px',
+                        border: '1px solid #cbd5e1',
                       }}
                     >
-                      {isSending ? <Spinner /> : <Send size={15} />}
-                    </button>
-                  </div>
+                      {/* Emoji button */}
+                      <button
+                        type="button"
+                        onClick={() => setShowEmojiPicker((prev) => !prev)}
+                        title="Add emoji"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#64748b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: 4,
+                          borderRadius: '50%',
+                        }}
+                      >
+                        <Smile size={18} />
+                      </button>
+
+                      {/* File upload button */}
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Attach file or screenshot"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#64748b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: 4,
+                          borderRadius: '50%',
+                        }}
+                      >
+                        <Paperclip size={17} />
+                      </button>
+
+                      <input
+                        type="text"
+                        placeholder="Compose your message..."
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            sendMessage();
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          border: 'none',
+                          background: 'transparent',
+                          outline: 'none',
+                          fontSize: 13,
+                          color: '#0f172a',
+                        }}
+                      />
+
+                      {/* Voice Record Button (when no text) or Send Button (when text exists) */}
+                      {inputText.trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => sendMessage()}
+                          disabled={isSending}
+                          style={{
+                            background: '#2563eb',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: 32,
+                            height: 32,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            transition: 'background 0.2s ease',
+                          }}
+                        >
+                          {isSending ? <Spinner /> : <Send size={15} />}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setIsRecordingVoice(true)}
+                          title="Record voice message"
+                          style={{
+                            background: '#ef4444',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: 32,
+                            height: 32,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(239, 68, 68, 0.25)',
+                          }}
+                        >
+                          <Mic size={16} />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : null}
             </>

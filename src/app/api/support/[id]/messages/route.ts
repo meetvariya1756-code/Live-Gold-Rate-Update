@@ -11,9 +11,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const reqId = parseInt(id, 10);
   const body = await req.json().catch(() => ({}));
 
-  const message = String(body.message || '').trim();
-  if (!message) {
-    return NextResponse.json({ error: 'Message cannot be empty.' }, { status: 400 });
+  let message = String(body.message || '').trim();
+  const messageType = body.message_type || 'text';
+  const fileUrl = body.file_url || null;
+  const fileName = body.file_name || null;
+  const fileSize = body.file_size ? parseInt(String(body.file_size), 10) : null;
+  const mimeType = body.mime_type || null;
+  const durationSeconds = body.duration_seconds ? parseInt(String(body.duration_seconds), 10) : null;
+
+  if (!message && !fileUrl) {
+    return NextResponse.json({ error: 'Message or attachment cannot be empty.' }, { status: 400 });
+  }
+
+  if (!message && fileUrl) {
+    if (messageType === 'audio') message = '🎤 Voice Message';
+    else if (messageType === 'image') message = '📷 Image Attachment';
+    else message = fileName ? `📎 ${fileName}` : '📎 Attachment';
   }
 
   const request = await one<any>('SELECT * FROM support_requests WHERE id = $1', [reqId]);
@@ -28,12 +41,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const senderName = user.role === 'admin' ? (user.name || 'Support Agent') : (user.name || request.client_name || 'Client');
 
-  // Insert user message
+  // Insert user message with multimedia fields
   const newMsg = await one<any>(
-    `INSERT INTO support_messages (request_id, sender_role, sender_name, message)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO support_messages (
+       request_id, sender_role, sender_name, message, 
+       message_type, file_url, file_name, file_size, mime_type, duration_seconds
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
-    [reqId, user.role, senderName, message]
+    [
+      reqId,
+      user.role,
+      senderName,
+      message,
+      messageType,
+      fileUrl,
+      fileName,
+      fileSize,
+      mimeType,
+      durationSeconds,
+    ]
   );
 
   let botMessage = null;

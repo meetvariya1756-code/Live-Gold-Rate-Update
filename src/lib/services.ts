@@ -10,6 +10,7 @@ import {
   bulkUpdateVariantPrices,
   ensureBreakupMetafieldDefinition,
   fetchAccessTokenWithClientCredentials,
+  refreshOAuthAccessToken,
   normalizeDomain,
   getShopInfo,
   VariantPriceUpdate,
@@ -25,6 +26,7 @@ export interface StoreRow {
   shopify_client_id_enc: string | null;
   shopify_client_secret_enc: string | null;
   access_token_enc: string | null;
+  refresh_token_enc?: string | null;
   token_expires_at: string | null;
   currency: string;
   round_to: string;
@@ -37,7 +39,7 @@ export interface StoreRow {
 }
 
 export function publicStore(s: StoreRow & { client_name?: string | null; client_username?: string | null }) {
-  const { access_token_enc, shopify_client_id_enc, shopify_client_secret_enc, ...rest } = s;
+  const { access_token_enc, refresh_token_enc, shopify_client_id_enc, shopify_client_secret_enc, ...rest } = s;
   return {
     ...rest,
     round_to: Number(s.round_to),
@@ -99,6 +101,37 @@ export async function getFreshCreds(storeOrId: StoreRow | number): Promise<ShopC
       store.access_token_enc = tokenEnc;
       store.token_expires_at = newExpiresAt.toISOString();
       return { shop_domain: domain, access_token: newToken };
+    }
+  }
+
+  // If OAuth access_token with refresh_token configured, renew if expiring
+  if (store.auth_type === 'access_token' && store.refresh_token_enc) {
+    const expiresAt = store.token_expires_at ? new Date(store.token_expires_at).getTime() : 0;
+    const isExpiredOrExpiringSoon = !store.access_token_enc || !expiresAt || expiresAt <= Date.now() + 300_000; // 5 min threshold
+    if (isExpiredOrExpiringSoon) {
+      try {
+        const refreshToken = decrypt(store.refresh_token_enc);
+        const tokenRes = await refreshOAuthAccessToken(domain, refreshToken);
+        const newToken = tokenRes.access_token;
+        const expiresInSec = tokenRes.expires_in || 3600;
+        const newExpiresAt = new Date(Date.now() + Math.max(0, expiresInSec - 300) * 1000);
+        const tokenEnc = encrypt(newToken);
+        const newRefreshEnc = tokenRes.refresh_token ? encrypt(tokenRes.refresh_token) : store.refresh_token_enc;
+
+        await q(
+          `UPDATE stores
+           SET access_token_enc = $1, refresh_token_enc = $2, token_expires_at = $3
+           WHERE id = $4`,
+          [tokenEnc, newRefreshEnc, newExpiresAt.toISOString(), store.id],
+        );
+
+        store.access_token_enc = tokenEnc;
+        store.refresh_token_enc = newRefreshEnc;
+        store.token_expires_at = newExpiresAt.toISOString();
+        return { shop_domain: domain, access_token: newToken };
+      } catch (err) {
+        console.error(`[services] Failed to refresh OAuth token for store #${store.id}:`, err);
+      }
     }
   }
 

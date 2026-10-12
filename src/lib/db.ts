@@ -6,7 +6,9 @@ export const pool: Pool =
   g.__pgPool ??
   new Pool({
     connectionString: process.env.DATABASE_URL,
-    max: 10,
+    max: 5,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 5000,
     ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
   });
 if (process.env.NODE_ENV !== 'production') g.__pgPool = pool;

@@ -61,9 +61,15 @@ export async function POST(req: NextRequest) {
     password_hash: string;
     role: 'admin' | 'client';
     is_active: boolean;
-  }>('SELECT id, username, name, password_hash, role, is_active FROM users WHERE lower(username) = lower($1)', [
-    username,
-  ]);
+  }>(
+    `SELECT id, username, name, password_hash, role, is_active 
+     FROM users 
+     WHERE lower(username) = lower($1)
+        OR lower(username) = lower($1 || '.myshopify.com')
+        OR lower(replace(username, '.myshopify.com', '')) = lower(replace($1, '.myshopify.com', ''))
+     LIMIT 1`,
+    [username],
+  );
 
   if (!user) {
     return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
