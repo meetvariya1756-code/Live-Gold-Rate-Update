@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, money, timeAgo } from '@/lib/client';
 import { calculatePrice, emptyConfig, guessMetalKey, MetalRate, Stone, VariantConfigInput } from '@/lib/pricing';
 import { detectSizeOption, groupVariants, sizeLabel, OptionDef } from '@/lib/grouping';
@@ -34,6 +34,7 @@ export default function ProductPage() {
   const [autoPush, setAutoPush] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const hasAutoOpenedRef = useRef(false);
 
   const load = useCallback(async (refresh = false) => {
     const d = await api<Data>(`/api/stores/${storeId}/products/${productId}${refresh ? '?refresh=1' : ''}`);
@@ -52,15 +53,24 @@ export default function ProductPage() {
     load(true).catch((e) => { setError(e.message); load(false).catch(() => {}); });
   }, [load]);
 
+  useEffect(() => {
+    hasAutoOpenedRef.current = false;
+    setOpenGroup(null);
+    setOpenVariant(null);
+  }, [productId]);
+
   const sizeOption = sizeOpt === undefined ? detectSizeOption(data?.product.options || []) : sizeOpt;
   const groups = useMemo(() => (data ? groupVariants(data.product.options, data.variants, sizeOption) : []), [data, sizeOption]);
 
-  // Open the first unfinished group automatically
+  // Open the first unfinished group automatically only once on initial load
   useEffect(() => {
-    if (!groups.length || openGroup !== null) return;
+    if (!groups.length || hasAutoOpenedRef.current) return;
     const g = groups.find((g) => g.variants.some((v) => !saved[v.gid])) || groups[0];
-    setOpenGroup(g.key);
-  }, [groups, saved, openGroup]);
+    if (g) {
+      setOpenGroup(g.key);
+      hasAutoOpenedRef.current = true;
+    }
+  }, [groups, saved]);
 
   if (!data) return <div className="page">{error ? <div className="banner error">{error}</div> : <div className="empty">Loading product from Shopify…</div>}</div>;
 
@@ -130,7 +140,7 @@ export default function ProductPage() {
           </Link>
           {product.image_url && <img className="thumb" style={{ width: 56, height: 56 }} src={`${product.image_url}${product.image_url.includes('?') ? '&' : '?'}width=120`} alt="" />}
           <div>
-            <div className="crumbs"><Link href="/">Stores</Link> / <Link href={`/stores/${storeId}`}>{store.name}</Link> /</div>
+            <div className="crumbs"><Link href={`/stores/${storeId}`}>{store.name}</Link> /</div>
             <h1>{product.title}</h1>
             <div className="row small muted" style={{ marginTop: 2 }}>
               <span className={`badge ${doneCount === totalVariants ? 'green' : doneCount ? 'amber' : ''}`}>{doneCount} / {totalVariants} variants configured</span>
@@ -221,8 +231,9 @@ export default function ProductPage() {
                   const vOpen = openVariant === v.gid;
                   const st = isDirty(v.gid) ? 'dirty' : isSaved(v.gid) ? 'saved' : '';
                   return (
-                    <div key={v.gid} className={`vcard ${st}`}>
+                    <div key={v.gid} className={`vcard ${st} ${vOpen ? 'open' : ''}`}>
                       <div className="vcard-head" onClick={() => setOpenVariant(vOpen ? null : v.gid)}>
+                        <span className="chev">▶</span>
                         <span className="size-pill">{sizeLabel(v, sizeOption)}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div className="small"><b>{v.title}</b></div>
@@ -240,7 +251,8 @@ export default function ProductPage() {
                             roundTo={store.round_to}
                             onChange={(patch) => updateForm(v.gid, form, patch)}
                           />
-                          <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
+                          <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end', gap: 8 }}>
+                            <button type="button" onClick={() => setOpenVariant(null)}>Collapse</button>
                             {saved[v.gid] && isDirty(v.gid) && (
                               <button onClick={() => setForms((f) => ({ ...f, [v.gid]: JSON.parse(saved[v.gid]) }))}>Discard changes</button>
                             )}

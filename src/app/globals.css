@@ -224,8 +224,8 @@ table.list tr.click:hover td { background: #f7f7f8; }
 .group-head:hover { background: #fafafa; }
 .group.done { border-color: #9fd6b3; }
 .group.done > .group-head { background: var(--green-soft); }
-.group-head .chev { transition: transform .15s; color: var(--muted); }
-.group.open .group-head .chev { transform: rotate(90deg); }
+.group-head .chev, .vcard-head .chev { transition: transform .15s; color: var(--muted); font-size: 11px; flex-shrink: 0; }
+.group.open > .group-head .chev, .vcard.open > .vcard-head .chev { transform: rotate(90deg); }
 .group-body { border-top: 1px solid var(--border); padding: 12px; background: var(--surface-2); }
 
 .vcard { background: #fff; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; }
