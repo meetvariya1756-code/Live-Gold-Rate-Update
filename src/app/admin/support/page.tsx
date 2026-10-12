@@ -73,6 +73,7 @@ function AdminSupportContent() {
   const ticketIdParam = searchParams.get('ticketId');
 
   const [requests, setRequests] = useState<SupportRequest[] | null>(null);
+  const [loadError, setLoadError] = useState('');
   const [selectedTicket, setSelectedTicket] = useState<SupportRequest | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -167,13 +168,21 @@ function AdminSupportContent() {
         const data = await res.json();
         const list: SupportRequest[] = data.requests || [];
         setRequests(list);
+        setLoadError('');
 
         if (ticketIdParam) {
           const match = list.find((r) => r.id === parseInt(ticketIdParam, 10));
           if (match) openTicket(match);
         }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        const msg = errData.error || `HTTP ${res.status}`;
+        setLoadError(msg);
+        setRequests((prev) => (prev === null ? [] : prev));
       }
     } catch (e: any) {
+      setLoadError(e.message || 'Network error');
+      setRequests((prev) => (prev === null ? [] : prev));
       toast(e.message, true);
     }
   };
@@ -484,6 +493,12 @@ function AdminSupportContent() {
           {requests === null ? (
             <div className="empty" style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
               <Spinner /> Loading support requests…
+            </div>
+          ) : loadError && requests.length === 0 ? (
+            <div className="empty" style={{ padding: 40, textAlign: 'center', color: '#b91c1c' }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>Unable to load support requests</div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 14 }}>{loadError}</div>
+              <button className="primary" onClick={loadRequests}>Retry</button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="empty" style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>

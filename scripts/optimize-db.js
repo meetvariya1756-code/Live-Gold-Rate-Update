@@ -54,5 +54,14 @@ const INDEXES = [
   // Analyze all tables so the PostgreSQL query planner has updated statistics
   await c.query('ANALYZE');
   console.log('✓ Database ANALYZE completed.');
+
+  try {
+    await c.query("ALTER DATABASE gold_pricer SET idle_session_timeout = '60s'");
+    await c.query("ALTER DATABASE gold_pricer SET idle_in_transaction_session_timeout = '30s'");
+    console.log('✓ Automatic idle connection reaper configured (60s limit).');
+  } catch (e) {
+    console.warn('Note on idle timeout:', e.message);
+  }
+
   await c.end();
 })();
