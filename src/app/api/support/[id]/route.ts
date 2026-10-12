@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q, one } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
+import { sendResolvedTicketEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,8 +61,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const updates: string[] = [];
   const values: any[] = [];
+  let isResolving = false;
 
   if (body.status && ['pending', 'in_progress', 'resolved', 'closed'].includes(body.status)) {
+    if (body.status === 'resolved') {
+      isResolving = true;
+    }
     values.push(body.status);
     updates.push(`status = $${values.length}`);
   }
@@ -86,5 +91,56 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     values
   );
 
-  return NextResponse.json({ ok: true, request: updated });
+  let emailResult: any = null;
+  // If status is changed to Resolved, send full conversation history via email
+  if (isResolving && updated) {
+    try {
+      const messages = await q<any>(
+        'SELECT * FROM support_messages WHERE request_id = $1 ORDER BY created_at ASC',
+        [reqId]
+      );
+      emailResult = await sendResolvedTicketEmail(updated, messages);
+
+      // Post an audit confirmation bot note in chat
+      const confirmNote = `Ticket marked as Resolved by ${user.name || 'Admin'}. Full conversation transcript sent to ${emailResult.recipient}.`;
+      await q(
+        `INSERT INTO support_messages (request_id, sender_role, sender_name, message, message_type)
+         VALUES ($1, 'bot', 'System', $2, 'text')`,
+        [reqId, confirmNote]
+      );
+    } catch (e: any) {
+      console.error('[Resolved Email Failed]:', e);
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    request: updated,
+    emailResult,
+  });
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await requireAuth(req);
+  if (user.role !== 'admin') {
+    return NextResponse.json({ error: 'Only administrators can delete support tickets' }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const reqId = parseInt(id, 10);
+
+  const existing = await one<any>('SELECT * FROM support_requests WHERE id = $1', [reqId]);
+  if (!existing) {
+    return NextResponse.json({ error: 'Support request not found' }, { status: 404 });
+  }
+
+  // Delete all messages and the ticket itself from database
+  await q('DELETE FROM support_messages WHERE request_id = $1', [reqId]);
+  await q('DELETE FROM support_requests WHERE id = $1', [reqId]);
+
+  return NextResponse.json({
+    ok: true,
+    deletedId: reqId,
+    message: `Support ticket #${reqId} and its full chat history were deleted from the database.`,
+  });
 }

@@ -28,6 +28,8 @@ import {
   Paperclip,
   Smile,
   Image as ImageIcon,
+  Trash2,
+  Send,
 } from 'lucide-react';
 import { MessageMedia, AudioRecorder, EmojiPickerPopover } from '@/components/ChatMedia';
 
@@ -84,6 +86,7 @@ function AdminSupportContent() {
   const [adminNotes, setAdminNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
+  const [deleteConfirmTicketId, setDeleteConfirmTicketId] = useState<number | null>(null);
 
   // Admin multimedia support states
   const [showAdminEmoji, setShowAdminEmoji] = useState(false);
@@ -239,8 +242,41 @@ function AdminSupportContent() {
       if (res.ok) {
         const data = await res.json();
         setSelectedTicket(data.request);
-        toast(`Status updated to ${status.replace('_', ' ').toUpperCase()}`);
+        if (status === 'resolved') {
+          const rec = data.emailResult?.recipient || 'customer email';
+          toast(`✓ Marked as Resolved! Full chat conversation sent to ${rec}`);
+        } else {
+          toast(`Status updated to ${status.replace('_', ' ').toUpperCase()}`);
+        }
         loadRequests();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast(err.error || 'Failed to update status', true);
+      }
+    } catch (e: any) {
+      toast(e.message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteTicket = async (ticketId: number) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/support/${ticketId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        toast(`Ticket #${ticketId} and complete conversation deleted from database.`);
+        if (selectedTicket?.id === ticketId) {
+          setSelectedTicket(null);
+          setMessages([]);
+        }
+        setDeleteConfirmTicketId(null);
+        loadRequests();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast(err.error || 'Failed to delete ticket', true);
       }
     } catch (e: any) {
       toast(e.message, true);
@@ -660,30 +696,53 @@ function AdminSupportContent() {
                         {timeAgo(r.created_at)}
                       </td>
 
-                      <td style={{ textAlign: 'right', padding: '12px 14px' }}>
-                        <button
-                          style={{
-                            background: isSelected ? '#2563eb' : '#ffffff',
-                            color: isSelected ? '#ffffff' : '#374151',
-                            border: `1px solid ${isSelected ? '#2563eb' : '#d1d5db'}`,
-                            borderRadius: 6,
-                            padding: '4px 10px',
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openTicket(r);
-                          }}
-                        >
-                          <span>Open</span>
-                          <ArrowRight size={12} />
-                        </button>
+                      <td style={{ textAlign: 'right', padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                        <div className="row" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                          <button
+                            type="button"
+                            style={{
+                              background: '#ffffff',
+                              color: '#dc2626',
+                              border: '1px solid #fecaca',
+                              borderRadius: 6,
+                              padding: '5px 8px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              transition: 'all 0.15s ease',
+                            }}
+                            title="Delete this chat conversation from database"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirmTicketId(r.id);
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                          <button
+                            style={{
+                              background: isSelected ? '#2563eb' : '#ffffff',
+                              color: isSelected ? '#ffffff' : '#374151',
+                              border: `1px solid ${isSelected ? '#2563eb' : '#d1d5db'}`,
+                              borderRadius: 6,
+                              padding: '4px 10px',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openTicket(r);
+                            }}
+                          >
+                            <span>Open</span>
+                            <ArrowRight size={12} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -765,25 +824,50 @@ function AdminSupportContent() {
                 </div>
               </div>
 
-              <button
-                onClick={() => setSelectedTicket(null)}
-                style={{
-                  background: '#ffffff',
-                  border: '1px solid #d1d5db',
-                  borderRadius: 6,
-                  color: '#4b5563',
-                  padding: '4px 10px',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <X size={14} />
-                <span>Close</span>
-              </button>
+              <div className="row" style={{ gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmTicketId(selectedTicket.id)}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #fecaca',
+                    borderRadius: 6,
+                    color: '#dc2626',
+                    padding: '5px 12px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    transition: 'all 0.15s ease',
+                  }}
+                  title="Permanently delete this chat conversation from the database"
+                >
+                  <Trash2 size={13} />
+                  <span>Delete Chat</span>
+                </button>
+
+                <button
+                  onClick={() => setSelectedTicket(null)}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 6,
+                    color: '#4b5563',
+                    padding: '5px 12px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <X size={14} />
+                  <span>Close</span>
+                </button>
+              </div>
             </div>
 
             {/* Quick Action & Contact Toolbar */}
@@ -863,11 +947,11 @@ function AdminSupportContent() {
               </div>
 
               {/* Status Updater */}
-              <div className="row" style={{ gap: 8 }}>
+              <div className="row" style={{ gap: 8, alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 600 }}>Status:</span>
                 <select
                   style={{
-                    minWidth: 125,
+                    minWidth: 120,
                     padding: '5px 10px',
                     borderRadius: 6,
                     border: '1px solid #d1d5db',
@@ -885,6 +969,55 @@ function AdminSupportContent() {
                   <option value="resolved">Resolved</option>
                   <option value="closed">Closed</option>
                 </select>
+
+                {selectedTicket.status !== 'resolved' ? (
+                  <button
+                    type="button"
+                    onClick={() => updateStatus('resolved')}
+                    disabled={busy}
+                    style={{
+                      background: '#16a34a',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '6px 12px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      boxShadow: '0 1px 3px rgba(22, 163, 74, 0.3)',
+                    }}
+                    title="Mark ticket as Resolved and email full conversation transcript to customer"
+                  >
+                    <CheckCircle2 size={13} />
+                    <span>Resolve & Email</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => updateStatus('resolved')}
+                    disabled={busy}
+                    style={{
+                      background: '#f0fdf4',
+                      color: '#15803d',
+                      border: '1px solid #bbf7d0',
+                      padding: '5px 11px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                    }}
+                    title="Re-send complete chat transcript email to customer"
+                  >
+                    <Send size={12} />
+                    <span>Resend Transcript</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1368,6 +1501,56 @@ function AdminSupportContent() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmTicketId !== null && (
+        <div className="modal-back" style={{ zIndex: 1000 }} onClick={() => !busy && setDeleteConfirmTicketId(null)}>
+          <div className="modal" style={{ maxWidth: 440, padding: 24 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#dc2626', marginBottom: 12 }}>
+              <div style={{ background: '#fee2e2', padding: 8, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Trash2 size={20} color="#dc2626" />
+              </div>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111827' }}>Delete Chat Conversation</h2>
+            </div>
+            <p style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.5, margin: '0 0 20px' }}>
+              Are you sure you want to permanently delete <b>Ticket #{deleteConfirmTicketId}</b>?
+              <br /><br />
+              This will completely remove the conversation and all message history from the PostgreSQL database. This action <b>cannot be undone</b>.
+            </p>
+            <div className="row" style={{ justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmTicketId(null)}
+                disabled={busy}
+                style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => deleteTicket(deleteConfirmTicketId)}
+                style={{
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                {busy ? <Spinner /> : <Trash2 size={14} />}
+                <span>Delete from Database</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
