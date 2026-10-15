@@ -906,7 +906,7 @@ function AdminSupportContent() {
                 )}
                 {selectedTicket.client_email && (
                   <a
-                    href={`mailto:${selectedTicket.client_email}?subject=Support: ${selectedTicket.subject || 'Gold Rate Pricer Support'}`}
+                    href={`mailto:${selectedTicket.client_email}?subject=Support: ${selectedTicket.subject || 'LiveGold Feed Support'}`}
                     style={{
                       background: '#ffffff',
                       color: '#374151',
@@ -1457,7 +1457,6 @@ function AdminSupportContent() {
                 padding: '14px 20px',
                 borderTop: '1px solid #e5e7eb',
                 background: '#fafafa',
-                borderRadius: '0 0 12px 12px',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -1497,6 +1496,24 @@ function AdminSupportContent() {
                 value={adminNotes}
                 onChange={(e) => setAdminNotes(e.target.value)}
               />
+            </div>
+
+            {/* Powered by Branding Footer */}
+            <div
+              style={{
+                padding: '8px 20px',
+                background: '#f9fafb',
+                borderTop: '1px solid #e5e7eb',
+                textAlign: 'center',
+                fontSize: 11,
+                fontWeight: 500,
+                color: '#6b7280',
+                letterSpacing: '0.01em',
+                borderRadius: '0 0 12px 12px',
+                userSelect: 'none',
+              }}
+            >
+              Powered by Venner Infotech & Marketing Solution
             </div>
           </div>
         )}

@@ -1,4 +1,4 @@
--- Gold Rate Pricer schema (PostgreSQL). Safe to run multiple times.
+-- LiveGold Feed schema (PostgreSQL). Safe to run multiple times.
 
 -- Multi-Tenant Users (Admins and Clients)
 CREATE TABLE IF NOT EXISTS users (
@@ -196,6 +196,9 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='collaborator_code') THEN
     ALTER TABLE stores ADD COLUMN collaborator_code TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_requests' AND column_name='resolved_at') THEN
+    ALTER TABLE support_requests ADD COLUMN resolved_at TIMESTAMPTZ;
   END IF;
 END $$;
 

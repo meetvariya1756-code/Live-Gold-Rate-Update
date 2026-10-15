@@ -83,7 +83,7 @@ export function StoreAccessConsentModal() {
                 Store Data & Access Permissions
               </h2>
               <div style={{ fontSize: 12, color: '#c9cccf', marginTop: 2 }}>
-                Gold Rate Pricer • Shopify Embedded Application
+                LiveGold Feed • Shopify Embedded Application
               </div>
             </div>
           </div>
@@ -103,7 +103,7 @@ export function StoreAccessConsentModal() {
         >
           <div style={{ marginBottom: 16 }}>
             <p style={{ margin: '0 0 6px 0', fontSize: 14, fontWeight: 600, color: '#111827' }}>
-              Welcome to Gold Rate Pricer
+              Welcome to LiveGold Feed
             </p>
             <p style={{ margin: 0, color: '#4b5563', fontSize: 13 }}>
               To automatically calculate, synchronize, and update live gold, silver, and gemstone prices across your storefront, this software accesses the following store data:

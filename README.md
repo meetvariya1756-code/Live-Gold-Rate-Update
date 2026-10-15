@@ -1,4 +1,4 @@
-# Gold Rate Pricer — Shopify jewellery pricing middleware
+# LiveGold Feed — Shopify jewellery pricing middleware
 
 Multi-store Shopify middleware that prices every jewellery **variant** from the day's **metal rate**
 (gold / silver / platinum) plus weight, making charges (majuri), wastage, diamond / gemstone charges,

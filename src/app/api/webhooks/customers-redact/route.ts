@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'HMAC verification failed' }, { status: 401 });
     }
 
-    // Gold Rate Pricer does not store end-customer personal data.
+    // LiveGold Feed does not store end-customer personal data.
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ ok: true });

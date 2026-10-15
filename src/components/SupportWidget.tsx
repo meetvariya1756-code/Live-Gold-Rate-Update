@@ -595,10 +595,8 @@ export function SupportWidget({
                   {currentTicket?.status === 'closed'
                     ? 'Chat session ended'
                     : isHumanActive
-                    ? 'Live Agent Connected'
-                    : currentTicket?.human_requested
-                    ? 'Connecting to Specialist...'
-                    : 'Automated Assistant & Live Agents'}
+                    ? 'Live Support Specialist Active'
+                    : 'Direct Live Human Support'}
                 </div>
               </div>
             </div>
@@ -799,39 +797,13 @@ export function SupportWidget({
                   </div>
                 )}
 
-                {/* Connect with Human Agent Option (hidden when human agent is already connected or active) */}
-                {currentTicket?.status !== 'closed' && !currentTicket?.human_requested && !isHumanActive && (
-                  <div style={{ textAlign: 'center', margin: '6px 0' }}>
-                    <button
-                      type="button"
-                      onClick={escalateToHuman}
-                      style={{
-                        background: '#fee2e2',
-                        color: '#b91c1c',
-                        border: '1px solid #fca5a5',
-                        borderRadius: 20,
-                        padding: '6px 14px',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      <User size={13} />
-                      <span>Connect with Human Agent</span>
-                    </button>
-                  </div>
-                )}
-
-                {/* Waiting Banner (only shown while WAITING for the human specialist to respond) */}
-                {currentTicket?.status !== 'closed' && currentTicket?.human_requested && !isHumanActive && (
+                {/* Direct Human Support status banner while waiting for agent reply */}
+                {currentTicket?.status !== 'closed' && !isHumanActive && (
                   <div
                     style={{
-                      background: '#ecfdf5',
-                      border: '1px solid #6ee7b7',
-                      color: '#065f46',
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      color: '#1e40af',
                       borderRadius: 10,
                       padding: '8px 12px',
                       fontSize: 12,
@@ -839,7 +811,7 @@ export function SupportWidget({
                       fontWeight: 500,
                     }}
                   >
-                    Admin notified. A human specialist will respond here shortly.
+                    Direct Human Support: A support specialist has been notified and will reply shortly.
                   </div>
                 )}
 
@@ -1325,6 +1297,24 @@ export function SupportWidget({
               )}
             </div>
           )}
+
+          {/* Powered by Branding Footer */}
+          <div
+            style={{
+              padding: '7px 14px',
+              background: '#f8fafc',
+              borderTop: '1px solid #e2e8f0',
+              textAlign: 'center',
+              fontSize: 11,
+              fontWeight: 500,
+              color: '#64748b',
+              letterSpacing: '0.01em',
+              userSelect: 'none',
+              flexShrink: 0,
+            }}
+          >
+            Powered by Venner Infotech & Marketing Solution
+          </div>
         </div>
       )}
 

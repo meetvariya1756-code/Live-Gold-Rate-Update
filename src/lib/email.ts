@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import nodemailer from 'nodemailer';
 
 export interface ChatMessageSummary {
@@ -30,8 +32,8 @@ function getTransporter() {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.SMTP_PORT || '465', 10);
   const secure = port === 465;
-  const user = process.env.SMTP_USER || 'meetvariya1756@gmail.com';
-  const pass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || '';
+  const user = process.env.SMTP_USER || process.env.ADMIN_EMAIL || 'meetvariya1756@gmail.com';
+  const pass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.ADMIN_APP_PASSWORD || '';
 
   if (user && pass) {
     return nodemailer.createTransport({
@@ -103,13 +105,36 @@ function buildChatTranscriptHtml(ticket: SupportTicketSummary, messages: ChatMes
     
     <!-- Header -->
     <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 24px 28px; color: #ffffff;">
-      <div style="display: inline-block; background: #dcfce7; color: #15803d; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 12px; margin-bottom: 10px;">
-        ✓ Ticket Resolved
-      </div>
-      <h2 style="margin: 0 0 6px; font-size: 20px; font-weight: 700;">Support Conversation Transcript</h2>
-      <p style="margin: 0; font-size: 13px; color: #94a3b8;">
-        Gold Rate Pricer Support · Ticket #${ticket.id}
-      </p>
+      <table style="width: 100%; border-collapse: collapse; border: 0;">
+        <tr>
+          <td style="vertical-align: top; padding: 0;">
+            <div style="display: inline-block; background: #dcfce7; color: #15803d; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 12px; margin-bottom: 10px;">
+              ✓ Ticket Resolved
+            </div>
+            <h2 style="margin: 0 0 6px; font-size: 20px; font-weight: 700; color: #ffffff;">Support Conversation Transcript</h2>
+            <p style="margin: 0; font-size: 13px; color: #94a3b8;">
+              LiveGold Feed Support · Ticket #${ticket.id}
+            </p>
+          </td>
+          <td style="vertical-align: top; text-align: right; padding: 0 0 0 16px;">
+            <table align="right" style="border-collapse: collapse; border: 0; display: inline-table;">
+              <tr>
+                <td style="vertical-align: middle; text-align: right; padding-right: 10px;">
+                  <div style="font-size: 13px; font-weight: 700; color: #ffffff; line-height: 1.25; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; white-space: nowrap;">
+                    Venner Infotech
+                  </div>
+                  <div style="font-size: 10px; color: #94a3b8; line-height: 1.25; margin-top: 2px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; white-space: nowrap;">
+                    &amp; Marketing Solution
+                  </div>
+                </td>
+                <td style="vertical-align: middle; width: 35px;">
+                  <img src="cid:venner-logo" alt="Venner Infotech &amp; Marketing Solution" width="35" height="35" style="width: 35px; height: 35px; border-radius: 6px; display: block; border: 0;" />
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
     </div>
 
     <!-- Ticket Summary -->
@@ -135,9 +160,12 @@ function buildChatTranscriptHtml(ticket: SupportTicketSummary, messages: ChatMes
       <p style="margin: 0 0 6px;">
         This ticket has been marked as <b>Resolved</b> by our support team.
       </p>
-      <p style="margin: 0; color: #94a3b8;">
-        If you have further questions, you can start a new conversation via the Gold Rate Pricer Support Widget in your Shopify Admin.
+      <p style="margin: 0 0 12px; color: #94a3b8;">
+        If you have further questions, you can start a new conversation via the LiveGold Feed Support Widget in your Shopify Admin.
       </p>
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 11px; color: #94a3b8;">
+        Powered by <strong style="color: #64748b;">Venner Infotech &amp; Marketing Solution</strong>
+      </div>
     </div>
   </div>
 </body>
@@ -155,6 +183,22 @@ function escapeHtml(text: string): string {
 }
 
 /**
+ * Returns attachments array for Nodemailer containing the Venner logo if present.
+ */
+function getEmailAttachments() {
+  const logoPath = path.join(process.cwd(), 'public', 'images', 'venner-logo.png');
+  const attachments = [];
+  if (fs.existsSync(logoPath)) {
+    attachments.push({
+      filename: 'venner-logo.png',
+      path: logoPath,
+      cid: 'venner-logo', // Referenced via cid:venner-logo in email HTML
+    });
+  }
+  return attachments;
+}
+
+/**
  * Sends complete chat transcript email when a ticket is resolved.
  */
 export async function sendResolvedTicketEmail(
@@ -167,19 +211,20 @@ export async function sendResolvedTicketEmail(
     : defaultAdminEmail;
 
   const html = buildChatTranscriptHtml(ticket, messages);
-  const textContent = `Support Ticket #${ticket.id} Resolved\n\nStore: ${ticket.store_name} (${ticket.shop_domain})\nCustomer: ${ticket.client_name}\n\n--- Conversation History ---\n` +
+  const textContent = `Support Ticket #${ticket.id} Resolved\n\nStore: ${ticket.store_name} (${ticket.shop_domain})\nCustomer: ${ticket.client_name}\nPowered by Venner Infotech & Marketing Solution\n\n--- Conversation History ---\n` +
     messages.map((m) => `[${new Date(m.created_at).toLocaleString()}] ${m.sender_name} (${m.sender_role}): ${m.message}`).join('\n\n');
 
   try {
     const transporter = getTransporter();
     const mailOptions = {
-      from: `"Gold Rate Pricer Support" <${defaultAdminEmail}>`,
+      from: `"LiveGold Feed Support" <${defaultAdminEmail}>`,
       to: recipient,
       // If client has their own email, also copy the admin email as requested
       cc: recipient !== defaultAdminEmail ? defaultAdminEmail : undefined,
       subject: `[Resolved] Support Conversation Transcript - Ticket #${ticket.id} (${ticket.store_name})`,
       text: textContent,
       html,
+      attachments: getEmailAttachments(),
     };
 
     const info = await transporter.sendMail(mailOptions);
@@ -200,3 +245,109 @@ export async function sendResolvedTicketEmail(
     };
   }
 }
+
+/**
+ * Sends an instant notification email to admin when a customer initiates a ticket or sends a message.
+ */
+export async function sendNewMessageAdminNotification(
+  ticket: { id: number; store_name: string; shop_domain?: string; client_name: string; client_email?: string | null; type?: string },
+  messageText: string,
+  senderName: string
+): Promise<void> {
+  const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER || 'meetvariya1756@gmail.com';
+  const appUrl = process.env.SHOPIFY_APP_URL || 'http://localhost:3000';
+  const ticketUrl = `${appUrl}/admin/support?ticketId=${ticket.id}`;
+
+  try {
+    const transporter = getTransporter();
+    const mailOptions = {
+      from: `"LiveGold Feed Support" <${adminEmail}>`,
+      to: adminEmail,
+      subject: `[New Client Message] ${ticket.store_name} - Ticket #${ticket.id}`,
+      text: `New support message received from ${senderName} (${ticket.store_name}):\n\n"${messageText}"\n\nView and reply in Admin Panel: ${ticketUrl}`,
+      html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #0f172a;">
+  <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+    <div style="background: #09090b; padding: 22px 28px; color: #ffffff;">
+      <table style="width: 100%; border-collapse: collapse; border: 0;">
+        <tr>
+          <td style="vertical-align: top; padding: 0;">
+            <div style="display: inline-block; background: #2563eb; color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 12px; margin-bottom: 8px;">
+              New Client Inquiry
+            </div>
+            <h1 style="margin: 0; font-size: 20px; font-weight: 700;">Incoming Customer Message</h1>
+            <p style="margin: 6px 0 0; color: #94a3b8; font-size: 13px;">A client has sent a message and is waiting for a live support agent.</p>
+          </td>
+          <td style="vertical-align: top; text-align: right; padding: 0 0 0 16px;">
+            <table align="right" style="border-collapse: collapse; border: 0; display: inline-table;">
+              <tr>
+                <td style="vertical-align: middle; text-align: right; padding-right: 10px;">
+                  <div style="font-size: 13px; font-weight: 700; color: #ffffff; line-height: 1.25; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; white-space: nowrap;">
+                    Venner Infotech
+                  </div>
+                  <div style="font-size: 10px; color: #94a3b8; line-height: 1.25; margin-top: 2px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; white-space: nowrap;">
+                    &amp; Marketing Solution
+                  </div>
+                </td>
+                <td style="vertical-align: middle; width: 35px;">
+                  <img src="cid:venner-logo" alt="Venner Infotech &amp; Marketing Solution" width="35" height="35" style="width: 35px; height: 35px; border-radius: 6px; display: block; border: 0;" />
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="padding: 24px 28px;">
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; width: 110px;"><b>Store:</b></td>
+          <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">${escapeHtml(ticket.store_name)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #64748b;"><b>Client:</b></td>
+          <td style="padding: 6px 0; color: #0f172a;">${escapeHtml(ticket.client_name)} ${ticket.client_email ? `(${escapeHtml(ticket.client_email)})` : ''}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #64748b;"><b>Ticket ID:</b></td>
+          <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">#${ticket.id}</td>
+        </tr>
+      </table>
+
+      <div style="padding: 14px 18px; background: #f1f5f9; border-left: 4px solid #2563eb; border-radius: 6px; font-size: 14px; color: #1e293b; line-height: 1.5; margin-bottom: 24px;">
+        <b>Message:</b><br />
+        ${escapeHtml(messageText)}
+      </div>
+
+      <div style="text-align: center; margin: 28px 0 10px;">
+        <a href="${ticketUrl}" style="background: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 14px; display: inline-block;">
+          Open Ticket &amp; Connect with Client &rarr;
+        </a>
+      </div>
+    </div>
+
+    <div style="padding: 16px 28px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b; text-align: center;">
+      <p style="margin: 0 0 6px;">LiveGold Feed Support System</p>
+      <div style="font-size: 11px; color: #94a3b8;">
+        Powered by <strong style="color: #64748b;">Venner Infotech &amp; Marketing Solution</strong>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+      `,
+      attachments: getEmailAttachments(),
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`[Email] Admin notification sent for ticket #${ticket.id}`);
+  } catch (err: any) {
+    console.warn(`[Email Warning] Could not send admin notification for ticket #${ticket.id}:`, err?.message || err);
+  }
+}
+
+

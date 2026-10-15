@@ -6,7 +6,7 @@ import { Toaster } from '@/components/ui';
 
 const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
-export const metadata: Metadata = { title: 'Gold Rate Pricer', description: 'Gold-rate based variant pricing for Shopify' };
+export const metadata: Metadata = { title: 'LiveGold Feed', description: 'Gold-rate based variant pricing for Shopify' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

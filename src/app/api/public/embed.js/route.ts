@@ -148,7 +148,7 @@ export async function GET(req: NextRequest) {
         renderWidget(res.variants);
       })
       .catch(function(err) {
-        console.warn('[Gold Rate Pricer]', err);
+        console.warn('[LiveGold Feed]', err);
       });
   }
 

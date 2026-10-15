@@ -53,7 +53,7 @@ function ClientLoginForm() {
     <form onSubmit={submit} className="card" style={{ maxWidth: 400, margin: '10vh auto' }}>
       <div className="card-body">
         <div className="brand" style={{ marginBottom: 12, fontSize: 19 }}>
-          <span className="brand-dot" /> Gold Rate Pricer
+          <span className="brand-dot" /> LiveGold Feed
         </div>
 
         <div style={{ marginBottom: 18, color: 'var(--muted)', fontSize: 13, lineHeight: 1.5 }}>

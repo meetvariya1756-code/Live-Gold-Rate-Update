@@ -22,7 +22,13 @@ function AdminLoginForm() {
         body: JSON.stringify({ username, password }),
       });
 
-      const res = await r.json();
+      let res: any = {};
+      try {
+        res = await r.json();
+      } catch {
+        res = { error: 'Server error or database unavailable. Please check that PostgreSQL is running.' };
+      }
+
       if (r.ok) {
         if (res.user?.role === 'admin') {
           location.href = '/admin';

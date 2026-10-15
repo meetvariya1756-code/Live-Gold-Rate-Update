@@ -262,7 +262,7 @@ export async function ensureBreakupMetafieldDefinition(creds: ShopCreds) {
         type: 'json',
         ownerType: 'PRODUCTVARIANT',
         access: { storefront: 'PUBLIC_READ' },
-        description: 'Price breakup written by Gold Rate Pricer',
+        description: 'Price breakup written by LiveGold Feed',
       },
     },
   );

@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   );
 
   if (!store) {
-    return NextResponse.json({ error: `Store '${cleanShop}' not found in Gold Rate Pricer.` }, { status: 404, headers: cors });
+    return NextResponse.json({ error: `Store '${cleanShop}' not found in LiveGold Feed.` }, { status: 404, headers: cors });
   }
 
   // Find product GID (handles numeric ID, handle, or GID)

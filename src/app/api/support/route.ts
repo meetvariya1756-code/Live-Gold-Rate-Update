@@ -1,53 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { q, one } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
+import { sendNewMessageAdminNotification } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const user = await requireAuth(req);
-  const url = new URL(req.url);
-  const statusFilter = url.searchParams.get('status');
-  const typeFilter = url.searchParams.get('type');
-  const storeIdFilter = url.searchParams.get('storeId');
+  try {
+    const user = await requireAuth(req);
+    const url = new URL(req.url);
+    const statusFilter = url.searchParams.get('status');
+    const typeFilter = url.searchParams.get('type');
+    const storeIdFilter = url.searchParams.get('storeId');
 
-  let query = `
-    SELECT 
-      sr.*,
-      (SELECT COUNT(*)::int FROM support_messages sm WHERE sm.request_id = sr.id) as message_count,
-      (SELECT sm.message FROM support_messages sm WHERE sm.request_id = sr.id ORDER BY sm.created_at DESC LIMIT 1) as last_message,
-      (SELECT sm.created_at FROM support_messages sm WHERE sm.request_id = sr.id ORDER BY sm.created_at DESC LIMIT 1) as last_message_at
-    FROM support_requests sr
-    WHERE 1=1
-  `;
-  const params: any[] = [];
+    let query = `
+      SELECT 
+        sr.*,
+        (SELECT COUNT(*)::int FROM support_messages sm WHERE sm.request_id = sr.id) as message_count,
+        (SELECT sm.message FROM support_messages sm WHERE sm.request_id = sr.id ORDER BY sm.created_at DESC LIMIT 1) as last_message,
+        (SELECT sm.created_at FROM support_messages sm WHERE sm.request_id = sr.id ORDER BY sm.created_at DESC LIMIT 1) as last_message_at
+      FROM support_requests sr
+      WHERE 1=1
+    `;
+    const params: any[] = [];
 
-  // Clients only see their own store requests
-  if (user.role !== 'admin') {
-    params.push(user.userId);
-    query += ` AND (sr.client_user_id = $${params.length} OR sr.store_id IN (SELECT id FROM stores WHERE client_user_id = $${params.length}))`;
-  } else if (storeIdFilter) {
-    params.push(parseInt(storeIdFilter, 10));
-    query += ` AND sr.store_id = $${params.length}`;
+    // Clients only see their own store requests
+    if (user.role !== 'admin') {
+      params.push(user.userId);
+      query += ` AND (sr.client_user_id = $${params.length} OR sr.store_id IN (SELECT id FROM stores WHERE client_user_id = $${params.length}))`;
+    } else if (storeIdFilter) {
+      const parsedId = parseInt(storeIdFilter, 10);
+      if (!isNaN(parsedId)) {
+        params.push(parsedId);
+        query += ` AND sr.store_id = $${params.length}`;
+      }
+    }
+
+    if (statusFilter && statusFilter !== 'all') {
+      params.push(statusFilter);
+      query += ` AND sr.status = $${params.length}`;
+    }
+
+    if (typeFilter && typeFilter !== 'all') {
+      params.push(typeFilter);
+      query += ` AND sr.type = $${params.length}`;
+    }
+
+    query += ` ORDER BY sr.created_at DESC`;
+
+    const requests = await q(query, params);
+    return NextResponse.json({ requests });
+  } catch (err: any) {
+    console.error('[GET /api/support] Error:', err);
+    const status = err?.status ?? 500;
+    const message = err?.message ?? 'Internal server error';
+    // Give a helpful hint when DB is unreachable
+    const hint = message.includes('ECONNREFUSED') || message.includes('connect')
+      ? ' — Database server is not running. Please start PostgreSQL.'
+      : '';
+    return NextResponse.json({ error: message + hint }, { status });
   }
-
-  if (statusFilter && statusFilter !== 'all') {
-    params.push(statusFilter);
-    query += ` AND sr.status = $${params.length}`;
-  }
-
-  if (typeFilter && typeFilter !== 'all') {
-    params.push(typeFilter);
-    query += ` AND sr.type = $${params.length}`;
-  }
-
-  query += ` ORDER BY sr.created_at DESC`;
-
-  const requests = await q(query, params);
-  return NextResponse.json({ requests });
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const user = await requireAuth(req);
   const body = await req.json().catch(() => ({}));
 
@@ -137,8 +153,9 @@ export async function POST(req: NextRequest) {
       preferred_call_time,
       is_read_by_admin,
       human_requested,
+      human_requested_at,
       collaborator_code
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, FALSE, FALSE, $12)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, FALSE, TRUE, NOW(), $12)
     RETURNING *`,
     [
       storeId,
@@ -156,7 +173,7 @@ export async function POST(req: NextRequest) {
     ]
   );
 
-  // If initial message or attachment provided, also create first message in support_messages
+  // If initial message or attachment provided, create first message in support_messages
   if (finalMessage && newRequest?.id) {
     await q(
       `INSERT INTO support_messages (
@@ -178,21 +195,20 @@ export async function POST(req: NextRequest) {
       ]
     );
 
-    // If client created a chat, bot sends initial greeting response
-    if (type === 'chat' && user.role === 'client') {
-      const botReply = `Hello ${clientName}! I am the Gold Rate Pricer Support Assistant. 
-
-I received your ${messageType === 'audio' ? 'voice message' : messageType === 'image' ? 'image' : 'inquiry'}. 
-
-How can I help you, or would you like to connect directly with a live human support specialist?`;
-
-      await q(
-        `INSERT INTO support_messages (request_id, sender_role, sender_name, message)
-         VALUES ($1, 'bot', 'Support Assistant', $2)`,
-        [newRequest.id, botReply]
-      );
+    // Notify admin directly via email so human support agent can connect immediately
+    if (user.role !== 'admin') {
+      sendNewMessageAdminNotification(newRequest, finalMessage, clientName).catch(() => {});
     }
   }
 
   return NextResponse.json({ ok: true, request: newRequest });
+  } catch (err: any) {
+    console.error('[POST /api/support] Error:', err);
+    const status = err?.status ?? 500;
+    const message = err?.message ?? 'Internal server error';
+    const hint = message.includes('ECONNREFUSED') || message.includes('connect')
+      ? ' — Database server is not running. Please start PostgreSQL.'
+      : '';
+    return NextResponse.json({ error: message + hint }, { status });
+  }
 }

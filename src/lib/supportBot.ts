@@ -33,7 +33,7 @@ export function generateBotReply(
   // Greetings
   if (msg === 'hi' || msg === 'hello' || msg === 'hey' || msg.startsWith('hi ') || msg.startsWith('hello ')) {
     return {
-      reply: `Hello! 👋 Welcome to Gold Rate Pricer Support. 
+      reply: `Hello! 👋 Welcome to LiveGold Feed Support. 
 
 I'm your automated assistant. I can help you with:
 • **Today's Gold & Metal Rates** setup & auto-derivation
