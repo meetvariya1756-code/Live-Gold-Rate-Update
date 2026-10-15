@@ -9,6 +9,8 @@ export interface ChatMessageSummary {
   message_type?: string;
   file_url?: string | null;
   file_name?: string | null;
+  file_size?: number | null;
+  mime_type?: string | null;
   created_at: string;
 }
 
@@ -22,6 +24,25 @@ export interface SupportTicketSummary {
   type: string;
   created_at: string;
   resolved_at?: string;
+}
+
+function formatBytes(bytes?: number | null): string {
+  if (!bytes || bytes <= 0) return '';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function getAbsoluteFileUrl(relativeOrAbsoluteUrl: string): string {
+  if (!relativeOrAbsoluteUrl) return '';
+  if (relativeOrAbsoluteUrl.startsWith('http://') || relativeOrAbsoluteUrl.startsWith('https://')) {
+    return relativeOrAbsoluteUrl;
+  }
+  const rawBase = process.env.SHOPIFY_APP_URL || process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const appUrl = rawBase.replace(/\/$/, '');
+  const cleanPath = relativeOrAbsoluteUrl.startsWith('/') ? relativeOrAbsoluteUrl : `/${relativeOrAbsoluteUrl}`;
+  return `${appUrl}${cleanPath}`;
 }
 
 /**
@@ -70,12 +91,57 @@ function buildChatTranscriptHtml(ticket: SupportTicketSummary, messages: ChatMes
 
       let attachmentHtml = '';
       if (m.file_url) {
+        const fullUrl = getAbsoluteFileUrl(m.file_url);
+        const fileName = m.file_name || 'Document Attachment';
+        const isPdf = fileName.toLowerCase().endsWith('.pdf') || (m.mime_type && m.mime_type.includes('pdf'));
+        const isImage = m.message_type === 'image' || (m.mime_type && m.mime_type.startsWith('image/')) || /\.(png|jpe?g|webp|gif)$/i.test(fileName);
+        const isAudio = m.message_type === 'audio' || (m.mime_type && m.mime_type.startsWith('audio/')) || /\.(webm|mp3|wav|ogg)$/i.test(fileName);
+
+        const icon = isPdf ? '📄' : isImage ? '🖼️' : isAudio ? '🎤' : '📎';
+        const typeLabel = isPdf ? 'PDF Document' : isImage ? 'Image File' : isAudio ? 'Voice Note' : 'Attachment';
+        const sizeStr = m.file_size ? formatBytes(m.file_size) : '';
+
         attachmentHtml = `
-          <div style="margin-top: 8px; font-size: 12px;">
-            📎 <b>Attachment:</b> <a href="${m.file_url}" target="_blank" style="color: #2563eb; text-decoration: underline;">${m.file_name || 'View file'}</a>
+          <div style="margin-top: 8px; padding: 12px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; max-width: 460px;">
+            <table style="width: 100%; border-collapse: collapse; border: 0;">
+              <tr>
+                <td style="width: 32px; vertical-align: middle; font-size: 24px; line-height: 1; padding-right: 10px;">
+                  ${icon}
+                </td>
+                <td style="vertical-align: middle; text-align: left;">
+                  <div style="font-size: 13px; font-weight: 700; color: #0f172a; word-break: break-all; line-height: 1.3;">
+                    ${escapeHtml(fileName)}
+                  </div>
+                  <div style="font-size: 11px; color: #64748b; margin-top: 3px;">
+                    ${typeLabel}${sizeStr ? ' • ' + sizeStr : ''} • <span style="color: #16a34a; font-weight: 600;">✓ Attached to this email</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td colspan="2" style="padding-top: 10px;">
+                  <a href="${fullUrl}" target="_blank" style="display: inline-block; background: #2563eb; color: #ffffff; text-decoration: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;">
+                    Download / Open Online &rarr;
+                  </a>
+                </td>
+              </tr>
+            </table>
           </div>
         `;
       }
+
+      // If message is simply the file name or placeholder, avoid duplicating text above attachment
+      const isRedundantMessage = m.file_url && (
+        !m.message ||
+        m.message.trim() === (m.file_name || '').trim() ||
+        m.message.trim() === `📎 ${(m.file_name || '').trim()}` ||
+        m.message === '📎 File Attachment' ||
+        m.message === '📷 Image Attachment' ||
+        m.message === '🎤 Voice Message'
+      );
+
+      const messageContentHtml = isRedundantMessage ? '' : `
+        <div style="font-size: 14px; line-height: 1.5; color: #1e293b; white-space: pre-wrap; margin-bottom: ${attachmentHtml ? '8px' : '0'};">${escapeHtml(m.message || '')}</div>
+      `;
 
       return `
         <div style="margin-bottom: 14px; padding: 12px 16px; border-radius: 8px; background-color: ${bg}; border: 1px solid ${border};">
@@ -86,7 +152,7 @@ function buildChatTranscriptHtml(ticket: SupportTicketSummary, messages: ChatMes
             </span>
             <span>${dateStr}</span>
           </div>
-          <div style="font-size: 14px; line-height: 1.5; color: #1e293b; white-space: pre-wrap;">${escapeHtml(m.message || '')}</div>
+          ${messageContentHtml}
           ${attachmentHtml}
         </div>
       `;
@@ -183,11 +249,12 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Returns attachments array for Nodemailer containing the Venner logo if present.
+ * Returns attachments array for Nodemailer containing the Venner logo
+ * and all chat conversation attachments (PDFs, images, docs) with safety size checks.
  */
-function getEmailAttachments() {
+function getEmailAttachments(messages?: ChatMessageSummary[]) {
   const logoPath = path.join(process.cwd(), 'public', 'images', 'venner-logo.png');
-  const attachments = [];
+  const attachments: Array<{ filename: string; path: string; cid?: string }> = [];
   if (fs.existsSync(logoPath)) {
     attachments.push({
       filename: 'venner-logo.png',
@@ -195,6 +262,34 @@ function getEmailAttachments() {
       cid: 'venner-logo', // Referenced via cid:venner-logo in email HTML
     });
   }
+
+  // Include uploaded chat attachments (PDFs, images, docs) directly in the email
+  if (messages && messages.length > 0) {
+    const attachedFilePaths = new Set<string>();
+    let totalBytes = 0;
+    const MAX_ATTACHMENTS_BYTES = 20 * 1024 * 1024; // 20MB limit for Gmail
+
+    for (const m of messages) {
+      if (m.file_url) {
+        const cleanRel = m.file_url.replace(/^\/?uploads\/support\//, '').replace(/^\//, '');
+        const diskPath = path.join(process.cwd(), 'public', 'uploads', 'support', cleanRel);
+        if (fs.existsSync(diskPath) && !attachedFilePaths.has(diskPath)) {
+          try {
+            const stat = fs.statSync(diskPath);
+            if (totalBytes + stat.size <= MAX_ATTACHMENTS_BYTES) {
+              totalBytes += stat.size;
+              attachedFilePaths.add(diskPath);
+              attachments.push({
+                filename: m.file_name || path.basename(diskPath),
+                path: diskPath,
+              });
+            }
+          } catch {}
+        }
+      }
+    }
+  }
+
   return attachments;
 }
 
@@ -224,7 +319,7 @@ export async function sendResolvedTicketEmail(
       subject: `[Resolved] Support Conversation Transcript - Ticket #${ticket.id} (${ticket.store_name})`,
       text: textContent,
       html,
-      attachments: getEmailAttachments(),
+      attachments: getEmailAttachments(messages),
     };
 
     const info = await transporter.sendMail(mailOptions);
