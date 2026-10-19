@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
-import { normalizeDomain } from '@/lib/shopify';
+import { normalizeDomain, getAppBaseUrl } from '@/lib/shopify';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const domain = normalizeDomain(rawShop);
   const clientId = process.env.SHOPIFY_API_KEY?.trim();
   const scopes = process.env.SHOPIFY_SCOPES || 'read_products,write_products,read_metaobjects,write_metaobjects';
-  const appUrl = (process.env.SHOPIFY_APP_URL || req.nextUrl.origin).replace(/\/$/, '');
+  const appUrl = getAppBaseUrl(req);
   const redirectUri = `${appUrl}/api/auth/callback`;
 
   if (!clientId) {

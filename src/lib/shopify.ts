@@ -27,22 +27,34 @@ export function normalizeDomain(input: string): string {
  * Returns the reliable public base URL, resolving proxies and preventing 0.0.0.0 redirects.
  */
 export function getAppBaseUrl(req: Request): string {
-  const envUrl = process.env.SHOPIFY_APP_URL?.trim().replace(/\/$/, '');
-  if (envUrl && !envUrl.includes('0.0.0.0')) return envUrl;
-
   const fwdHost = req.headers.get('x-forwarded-host');
+  const host = req.headers.get('host');
+  const incomingHost = (fwdHost || host || '').toLowerCase();
+
+  // If request arrived on live domain, prioritize it over any stale tunnel URL in .env
+  if (incomingHost.includes('live-gold-feed.vennerwp.com')) {
+    return 'https://live-gold-feed.vennerwp.com';
+  }
+
+  const envUrl = process.env.SHOPIFY_APP_URL?.trim().replace(/\/$/, '');
+  // Ignore stale trycloudflare tunnel in .env when incoming host is not trycloudflare
+  if (envUrl && !envUrl.includes('0.0.0.0')) {
+    if (!envUrl.includes('trycloudflare.com') || incomingHost.includes('trycloudflare.com')) {
+      return envUrl;
+    }
+  }
+
   if (fwdHost && !fwdHost.includes('0.0.0.0')) {
     const proto = req.headers.get('x-forwarded-proto') || 'https';
     return `${proto}://${fwdHost}`;
   }
 
-  const host = req.headers.get('host');
   if (host && !host.includes('0.0.0.0')) {
     const proto = req.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
     return `${proto}://${host}`;
   }
 
-  return 'http://localhost:3000';
+  return 'https://live-gold-feed.vennerwp.com';
 }
 
 /**
