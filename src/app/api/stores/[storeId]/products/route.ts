@@ -22,22 +22,38 @@ export const GET = handler(async (req: NextRequest, { params }: Ctx<{ storeId: s
     : filter === 'pending' ? 'WHERE configured = 0'
     : '';
 
-  const rows = await q(
-    `WITH x AS (
-       SELECT p.gid, p.title, p.handle, p.status, p.image_url,
+  const sql = filter === 'all'
+    ? `WITH filtered_p AS (
+         SELECT p.gid, p.title, p.handle, p.status, p.image_url, p.store_id, COUNT(*) OVER()::int AS total_count
+         FROM products p
+         WHERE p.store_id = $1 AND ($2 = '' OR lower(p.title) LIKE '%'||$2||'%' OR lower(p.handle) LIKE '%'||$2||'%'
+           OR EXISTS (SELECT 1 FROM variants v WHERE v.store_id=p.store_id AND v.product_gid=p.gid AND lower(v.sku) LIKE '%'||$2||'%'))
+         ORDER BY p.title
+         LIMIT $3 OFFSET $4
+       )
+       SELECT p.gid, p.title, p.handle, p.status, p.image_url, p.total_count,
          (SELECT COUNT(*) FROM variants v WHERE v.store_id=p.store_id AND v.product_gid=p.gid)::int AS variant_count,
          (SELECT COUNT(*) FROM variant_configs c JOIN variants v ON v.store_id=c.store_id AND v.gid=c.variant_gid
             WHERE c.store_id=p.store_id AND v.product_gid=p.gid)::int AS configured,
          (SELECT MIN(price) FROM variants v WHERE v.store_id=p.store_id AND v.product_gid=p.gid) AS min_price,
          (SELECT MAX(price) FROM variants v WHERE v.store_id=p.store_id AND v.product_gid=p.gid) AS max_price
-       FROM products p
-       WHERE p.store_id=$1 AND ($2 = '' OR lower(p.title) LIKE '%'||$2||'%' OR lower(p.handle) LIKE '%'||$2||'%'
-         OR EXISTS (SELECT 1 FROM variants v WHERE v.store_id=p.store_id AND v.product_gid=p.gid AND lower(v.sku) LIKE '%'||$2||'%'))
-     )
-     SELECT *, COUNT(*) OVER()::int AS total_count FROM x ${having}
-     ORDER BY title LIMIT $3 OFFSET $4`,
-    [Number(storeId), search, size, (page - 1) * size],
-  );
+       FROM filtered_p p
+       ORDER BY p.title`
+    : `WITH x AS (
+         SELECT p.gid, p.title, p.handle, p.status, p.image_url,
+           (SELECT COUNT(*) FROM variants v WHERE v.store_id=p.store_id AND v.product_gid=p.gid)::int AS variant_count,
+           (SELECT COUNT(*) FROM variant_configs c JOIN variants v ON v.store_id=c.store_id AND v.gid=c.variant_gid
+              WHERE c.store_id=p.store_id AND v.product_gid=p.gid)::int AS configured,
+           (SELECT MIN(price) FROM variants v WHERE v.store_id=p.store_id AND v.product_gid=p.gid) AS min_price,
+           (SELECT MAX(price) FROM variants v WHERE v.store_id=p.store_id AND v.product_gid=p.gid) AS max_price
+         FROM products p
+         WHERE p.store_id=$1 AND ($2 = '' OR lower(p.title) LIKE '%'||$2||'%' OR lower(p.handle) LIKE '%'||$2||'%'
+           OR EXISTS (SELECT 1 FROM variants v WHERE v.store_id=p.store_id AND v.product_gid=p.gid AND lower(v.sku) LIKE '%'||$2||'%'))
+       )
+       SELECT *, COUNT(*) OVER()::int AS total_count FROM x ${having}
+       ORDER BY title LIMIT $3 OFFSET $4`;
+
+  const rows = await q(sql, [Number(storeId), search, size, (page - 1) * size]);
   return json({
     products: rows.map(({ total_count, ...r }) => r),
     total: rows[0]?.total_count ?? 0,

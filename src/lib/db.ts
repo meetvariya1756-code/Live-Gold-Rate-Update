@@ -6,12 +6,22 @@ export const pool: Pool =
   g.__pgPool ??
   new Pool({
     connectionString: process.env.DATABASE_URL,
-    max: 5,
-    idleTimeoutMillis: 10000,
-    connectionTimeoutMillis: 5000,
+    max: parseInt(process.env.DATABASE_MAX_CONNECTIONS || '15', 10),
+    min: 2,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
     ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+    keepAlive: true,
+    statement_timeout: 30000, // 30s query timeout to prevent hanging connections
   });
-if (process.env.NODE_ENV !== 'production') g.__pgPool = pool;
+
+// Always attach error listener so idle client disconnects don't crash Node process (502 trigger)
+pool.on('error', (err) => {
+  console.error('[PostgreSQL Pool] Unexpected idle client error (recovering):', err.message);
+});
+
+// Always cache pool on globalThis across all environments to prevent connection leaks
+g.__pgPool = pool;
 
 export async function q<T extends QueryResultRow = any>(text: string, params: unknown[] = []): Promise<T[]> {
   const res = await pool.query<T>(text, params as any[]);

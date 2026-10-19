@@ -81,6 +81,12 @@ export async function autoUpdateStoreRates(storeId?: number, forcedRate24k?: num
       const currentRates = await getRates(s.id);
       const current24k = currentRates.find((r) => r.key === 'gold_24k')?.rate || 0;
 
+      // Skip heavy DB updates and Shopify price recalculations if rate has not changed
+      if (current24k === rate24k && !forcedRate24k) {
+        results.push({ storeId: s.id, storeName: s.name, rate24k, status: 'Rate unchanged, skipped push' });
+        continue;
+      }
+
       // Update 24k rate and ensure auto-derived rates are active
       await q(
         `UPDATE metal_rates
@@ -96,18 +102,16 @@ export async function autoUpdateStoreRates(storeId?: number, forcedRate24k?: num
         [s.id],
       );
 
-      // Record in rate history if rate changed
-      if (current24k !== rate24k) {
-        await q(
-          `INSERT INTO rate_history(store_id, key, rate, created_at)
-           VALUES($1, 'gold_24k', $2, NOW())`,
-          [s.id, rate24k],
-        );
-      }
+      // Record in rate history
+      await q(
+        `INSERT INTO rate_history(store_id, key, rate, created_at)
+         VALUES($1, 'gold_24k', $2, NOW())`,
+        [s.id, rate24k],
+      );
 
       // Automatically push updated prices to Shopify
       const { runId } = await pushPrices(s.id, 'auto_rate_sync');
-      results.push({ storeId: s.id, storeName: s.name, rate24k, runId });
+      results.push({ storeId: s.id, storeName: s.name, rate24k, runId, status: 'Updated' });
     } catch (e: any) {
       results.push({ storeId: s.id, storeName: s.name, error: e.message });
     }

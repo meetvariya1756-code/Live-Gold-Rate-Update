@@ -8,19 +8,35 @@ export const dynamic = 'force-dynamic';
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Cache-Control': 'public, max-age=60',
+  'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
 };
 
 export async function OPTIONS() {
   return new NextResponse(null, { headers: cors });
 }
 
+interface CachedRate {
+  data: any;
+  expires: number;
+}
+const rateCache = new Map<string, CachedRate>();
+
 // GET /api/public/rates?shop=xyz.myshopify.com
 export async function GET(req: NextRequest) {
   const shop = req.nextUrl.searchParams.get('shop');
   if (!shop) return NextResponse.json({ error: 'shop required' }, { status: 400, headers: cors });
 
-  const store = await one('SELECT id, currency, name FROM stores WHERE shop_domain=$1', [shop.toLowerCase()]);
+  const shopKey = shop.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  const now = Date.now();
+  const cached = rateCache.get(shopKey);
+  if (cached && cached.expires > now) {
+    return NextResponse.json(cached.data, { headers: cors });
+  }
+
+  const store = await one<{ id: number; currency: string; name: string }>(
+    'SELECT id, currency, name FROM stores WHERE lower(shop_domain)=$1 LIMIT 1',
+    [shopKey]
+  );
   if (!store) return NextResponse.json({ error: 'unknown shop' }, { status: 404, headers: cors });
 
   const rawRates = await getRates(store.id);
@@ -37,9 +53,13 @@ export async function GET(req: NextRequest) {
       currency: store.currency,
     }));
 
-  return NextResponse.json({
+  const payload = {
     currency: store.currency,
     rates,
     updated_at: new Date().toISOString(),
-  }, { headers: cors });
+  };
+
+  rateCache.set(shopKey, { data: payload, expires: now + 60000 }); // 60s memory cache
+
+  return NextResponse.json(payload, { headers: cors });
 }

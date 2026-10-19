@@ -6,24 +6,34 @@ const cors = {
   'Content-Type': 'application/javascript; charset=utf-8',
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Cache-Control': 'public, max-age=120',
+  'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400',
 };
 
 export async function OPTIONS() {
   return new NextResponse(null, { headers: cors });
 }
 
+const jsCache = new Map<string, string>();
+
 export async function GET(req: NextRequest) {
-  const proto = req.headers.get('x-forwarded-proto') || 'http';
+  const proto = req.headers.get('x-forwarded-proto') || 'https';
   const host = req.headers.get('host') || 'localhost:3000';
   const baseUrl = `${proto}://${host}`;
 
-  const js = `
+  let js = jsCache.get(baseUrl);
+  if (!js) {
+    js = `
 (function() {
   if (window.__gp_embed_loaded) return;
   window.__gp_embed_loaded = true;
 
-  var API_BASE = '${baseUrl}';
+  var API_BASE = (function() {
+    try {
+      var s = document.currentScript || document.querySelector('script[src*="embed.js"]');
+      if (s && s.src) return new URL(s.src).origin;
+    } catch(e) {}
+    return '${baseUrl}';
+  })();
 
   function getShop() {
     return (window.Shopify && window.Shopify.shop) || location.hostname;
@@ -294,6 +304,8 @@ export async function GET(req: NextRequest) {
   }
 })();
   `;
+    jsCache.set(baseUrl, js);
+  }
 
   return new NextResponse(js, { headers: cors });
 }

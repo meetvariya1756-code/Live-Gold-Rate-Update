@@ -8,11 +8,65 @@ export const dynamic = 'force-dynamic';
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Cache-Control': 'public, max-age=60',
+  'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
 };
 
 export async function OPTIONS() {
   return new NextResponse(null, { headers: cors });
+}
+
+// In-memory micro-caches to prevent hammering Postgres on high traffic / bot crawl
+interface StoreCacheItem {
+  store: { id: number; currency: string; round_to: string } | null;
+  expires: number;
+}
+interface RatesCacheItem {
+  rates: any[];
+  expires: number;
+}
+interface BreakupCacheItem {
+  payload: any;
+  expires: number;
+}
+
+const storeCache = new Map<string, StoreCacheItem>();
+const storeRatesCache = new Map<number, RatesCacheItem>();
+const breakupCache = new Map<string, BreakupCacheItem>();
+const syncLock = new Set<string>();
+
+// Helper to get cached store
+async function getCachedStore(cleanShop: string) {
+  const now = Date.now();
+  const cached = storeCache.get(cleanShop);
+  if (cached && cached.expires > now) return cached.store;
+
+  // Try exact indexed lookup first
+  let store = await one<{ id: number; currency: string; round_to: string }>(
+    `SELECT id, currency, round_to FROM stores WHERE lower(shop_domain) = $1 LIMIT 1`,
+    [cleanShop],
+  );
+
+  // Fallback if domain had subdomain variations
+  if (!store && cleanShop.includes('.')) {
+    store = await one<{ id: number; currency: string; round_to: string }>(
+      `SELECT id, currency, round_to FROM stores WHERE lower(shop_domain) LIKE $1 LIMIT 1`,
+      [`%${cleanShop}%`],
+    );
+  }
+
+  storeCache.set(cleanShop, { store, expires: now + 300_000 }); // 5 min cache
+  return store;
+}
+
+// Helper to get cached rates
+async function getCachedRates(storeId: number) {
+  const now = Date.now();
+  const cached = storeRatesCache.get(storeId);
+  if (cached && cached.expires > now) return cached.rates;
+
+  const rates = await getRates(storeId);
+  storeRatesCache.set(storeId, { rates, expires: now + 60_000 }); // 60s cache
+  return rates;
 }
 
 // GET /api/public/breakup?shop=xyz.myshopify.com&product=<numeric product id or handle>
@@ -24,59 +78,68 @@ export async function GET(req: NextRequest) {
   }
 
   const cleanShop = shop.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  const store = await one<{ id: number; currency: string; round_to: string }>(
-    `SELECT id, currency, round_to FROM stores
-     WHERE lower(shop_domain) = $1 OR lower(shop_domain) LIKE $2
-     LIMIT 1`,
-    [cleanShop, `%${cleanShop}%`],
-  );
+  const cleanProduct = product.trim();
+  const cacheKey = `${cleanShop}:${cleanProduct}`;
+  const now = Date.now();
 
+  const cachedBreakup = breakupCache.get(cacheKey);
+  if (cachedBreakup && cachedBreakup.expires > now) {
+    return NextResponse.json(cachedBreakup.payload, { headers: cors });
+  }
+
+  const store = await getCachedStore(cleanShop);
   if (!store) {
     return NextResponse.json({ error: `Store '${cleanShop}' not found in LiveGold Feed.` }, { status: 404, headers: cors });
   }
 
   // Find product GID (handles numeric ID, handle, or GID)
-  let productGid = product.startsWith('gid://') ? product : `gid://shopify/Product/${product}`;
-  if (!/^\d+$/.test(product) && !product.startsWith('gid://')) {
+  let productGid = cleanProduct.startsWith('gid://') ? cleanProduct : `gid://shopify/Product/${cleanProduct}`;
+  if (!/^\d+$/.test(cleanProduct) && !cleanProduct.startsWith('gid://')) {
     const pRow = await one<{ gid: string }>(
       'SELECT gid FROM products WHERE store_id = $1 AND (lower(handle) = lower($2) OR gid LIKE $3) LIMIT 1',
-      [store.id, product, `%${product}`],
+      [store.id, cleanProduct, `%${cleanProduct}`],
     );
     if (pRow) productGid = pRow.gid;
   }
 
-  const rates = await getRates(store.id);
+  const rates = await getCachedRates(store.id);
   let cfgs = await q(
     'SELECT * FROM variant_configs WHERE store_id = $1 AND product_gid = $2',
     [store.id, productGid],
   );
 
-  // If not configured yet, attempt auto-sync from Shopify live
+  // If not configured yet, attempt auto-sync with lock to prevent concurrency thrashing
   if (cfgs.length === 0) {
-    try {
-      const p = await syncOneProduct(store.id, productGid);
-      if (p && p.variants && p.variants.nodes) {
-        for (const v of p.variants.nodes) {
-          const optValues = (v.selectedOptions || []).map((o: any) => o.value);
-          optValues.push(v.title);
-          const metalKey = guessMetalKey(optValues) || 'gold_18k';
-          const defaultWeight = metalKey === 'gold_14k' ? 1.5 : (metalKey === 'gold_18k' ? 2.5 : 2.0);
-          const defaultMaking = metalKey === 'gold_14k' ? 5195.73 : 5000.0;
+    const lockKey = `${store.id}:${productGid}`;
+    if (!syncLock.has(lockKey)) {
+      syncLock.add(lockKey);
+      try {
+        const p = await syncOneProduct(store.id, productGid);
+        if (p && p.variants && p.variants.nodes) {
+          for (const v of p.variants.nodes) {
+            const optValues = (v.selectedOptions || []).map((o: any) => o.value);
+            optValues.push(v.title);
+            const metalKey = guessMetalKey(optValues) || 'gold_18k';
+            const defaultWeight = metalKey === 'gold_14k' ? 1.5 : (metalKey === 'gold_18k' ? 2.5 : 2.0);
+            const defaultMaking = metalKey === 'gold_14k' ? 5195.73 : 5000.0;
 
-          await q(
-            `INSERT INTO variant_configs(store_id, variant_gid, product_gid, metal_key, metal_weight, making_type, making_value, gst_pct, updated_at)
-             VALUES($1, $2, $3, $4, $5, 'fixed', $6, 3, NOW())
-             ON CONFLICT (store_id, variant_gid) DO NOTHING`,
-            [store.id, v.id, productGid, metalKey, defaultWeight, defaultMaking],
+            await q(
+              `INSERT INTO variant_configs(store_id, variant_gid, product_gid, metal_key, metal_weight, making_type, making_value, gst_pct, updated_at)
+               VALUES($1, $2, $3, $4, $5, 'fixed', $6, 3, NOW())
+               ON CONFLICT (store_id, variant_gid) DO NOTHING`,
+              [store.id, v.id, productGid, metalKey, defaultWeight, defaultMaking],
+            );
+          }
+          cfgs = await q(
+            'SELECT * FROM variant_configs WHERE store_id = $1 AND product_gid = $2',
+            [store.id, productGid],
           );
         }
-        cfgs = await q(
-          'SELECT * FROM variant_configs WHERE store_id = $1 AND product_gid = $2',
-          [store.id, productGid],
-        );
+      } catch (e) {
+        console.warn('Auto-sync product breakup failed:', e);
+      } finally {
+        syncLock.delete(lockKey);
       }
-    } catch (e) {
-      console.warn('Auto-sync product breakup failed:', e);
     }
   }
 
@@ -95,13 +158,18 @@ export async function GET(req: NextRequest) {
       compare_at: p.compare_at,
     };
     variants[numericId] = payload;
-    variants[c.variant_gid] = payload; // Support both numeric ID and full GID
+    variants[c.variant_gid] = payload;
   }
 
-  return NextResponse.json({
+  const responsePayload = {
     shop: cleanShop,
     product_gid: productGid,
     currency: store.currency,
     variants,
-  }, { headers: cors });
+  };
+
+  // Cache computed breakup for 60 seconds
+  breakupCache.set(cacheKey, { payload: responsePayload, expires: now + 60_000 });
+
+  return NextResponse.json(responsePayload, { headers: cors });
 }

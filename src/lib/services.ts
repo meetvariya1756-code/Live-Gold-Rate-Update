@@ -376,23 +376,45 @@ export async function pushPrices(storeId: number, trigger: string, productGids?:
           const errs = await bulkUpdateVariantPrices(creds, productGid, valid);
           const badIds = new Set(errs.map((e) => e.id).filter(Boolean));
           if (errs.length) messages.push(...errs.slice(0, 3).map((e) => `${productGid}: ${e.message}`));
-          for (const u of valid) {
-            if (badIds.has(u.id) || (errs.length && !badIds.size)) {
-              failed++;
-              continue;
-            }
-            updated++;
+          const successes = valid.filter((u) => !badIds.has(u.id) && (!errs.length || badIds.size));
+          failed += valid.length - successes.length;
+
+          if (successes.length > 0) {
+            updated += successes.length;
+            const gids = successes.map((u) => u.id);
+            const totals = successes.map((u) => u.total);
+            const prices = successes.map((u) => u.price ? Number(u.price) : 0);
+            const comparePrices = successes.map((u) => u.compareAtPrice ? Number(u.compareAtPrice) : null);
+
+            // Fast bulk update for variant_configs
             await q(
-              `UPDATE variant_configs SET last_calc_price=$3, last_pushed_price=$3, last_pushed_at=NOW() WHERE store_id=$1 AND variant_gid=$2`,
-              [storeId, u.id, u.total],
+              `UPDATE variant_configs AS c
+               SET last_calc_price = d.total,
+                   last_pushed_price = d.total,
+                   last_pushed_at = NOW()
+               FROM (SELECT unnest($2::text[]) AS gid, unnest($3::numeric[]) AS total) AS d
+               WHERE c.store_id = $1 AND c.variant_gid = d.gid`,
+              [storeId, gids, totals],
             );
-            await q(`UPDATE variants SET price=$3, compare_at_price=$4 WHERE store_id=$1 AND gid=$2`, [storeId, u.id, u.price, u.compareAtPrice]);
+
+            // Fast bulk update for variants
+            await q(
+              `UPDATE variants AS v
+               SET price = d.price,
+                   compare_at_price = d.compare_at_price
+               FROM (SELECT unnest($2::text[]) AS gid, unnest($3::numeric[]) AS price, unnest($4::numeric[]) AS compare_at_price) AS d
+               WHERE v.store_id = $1 AND v.gid = d.gid`,
+              [storeId, gids, prices, comparePrices],
+            );
           }
         } catch (e: any) {
           failed += valid.length;
           messages.push(`${productGid}: ${e.message}`);
         }
-        await q('UPDATE price_runs SET updated=$2, failed=$3 WHERE id=$1', [run.id, updated, failed]);
+        // Throttled run progress update to save DB I/O
+        if (updated % 20 === 0 || failed % 10 === 0) {
+          await q('UPDATE price_runs SET updated=$2, failed=$3 WHERE id=$1', [run.id, updated, failed]);
+        }
       }
       await q(
         `UPDATE price_runs SET status='done', updated=$2, failed=$3, message=$4, finished_at=NOW() WHERE id=$1`,

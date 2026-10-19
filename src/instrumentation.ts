@@ -21,8 +21,8 @@ export async function register() {
       }
     };
 
-    // 1. Initial sync shortly after server boot (15 seconds)
-    setTimeout(() => runSync(true), 15000);
+    // 1. Initial sync safely after server boot and warmup (45 seconds)
+    setTimeout(() => runSync(true), 45000);
 
     // 2. Continuous recurring sync every 30 minutes
     setInterval(() => runSync(false), INTERVAL_MS);

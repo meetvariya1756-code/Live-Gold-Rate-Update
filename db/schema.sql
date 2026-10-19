@@ -242,10 +242,15 @@ BEGIN
 END $$;
 
 -- Performance Indexes for fast loading
+CREATE INDEX IF NOT EXISTS stores_domain_lower_idx ON stores(lower(shop_domain));
 CREATE INDEX IF NOT EXISTS stores_client_user_idx ON stores(client_user_id);
 CREATE INDEX IF NOT EXISTS products_store_idx ON products(store_id);
+CREATE INDEX IF NOT EXISTS products_handle_idx ON products(store_id, handle);
 CREATE INDEX IF NOT EXISTS variants_store_idx ON variants(store_id);
+CREATE INDEX IF NOT EXISTS variants_sku_idx ON variants(store_id, lower(sku));
 CREATE INDEX IF NOT EXISTS variant_configs_store_idx ON variant_configs(store_id);
 CREATE INDEX IF NOT EXISTS variant_configs_store_gid_idx ON variant_configs(store_id, variant_gid);
+CREATE INDEX IF NOT EXISTS variant_configs_metal_idx ON variant_configs(store_id, metal_key);
+CREATE INDEX IF NOT EXISTS metal_rates_store_idx ON metal_rates(store_id);
 CREATE INDEX IF NOT EXISTS support_requests_client_user_idx ON support_requests(client_user_id);
 
