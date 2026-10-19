@@ -13,6 +13,7 @@ const PUBLIC = [
   '/api/public/',
   '/uploads/',
   '/embed.js',
+  '/privacy',
 ];
 
 export async function middleware(req: NextRequest) {
