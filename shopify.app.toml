@@ -1,0 +1,32 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "6e8c56834b57b367be71f9b812c109dc"
+name = "LiveGold Feed"
+handle = "gold-rate-price"
+application_url = "https://live-gold-feed.vennerwp.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = false
+
+[access_scopes]
+# Scopes required for LiveGold Feed jewelry pricing
+scopes = "read_products,write_products,read_metaobjects,write_metaobjects"
+
+[auth]
+redirect_urls = [
+  "https://live-gold-feed.vennerwp.com/api/auth/callback",
+  "https://live-gold-feed.vennerwp.com/api/auth/shopify"
+]
+
+[webhooks]
+api_version = "2025-10"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "https://live-gold-feed.vennerwp.com/api/webhooks/app-uninstalled"
+
+  [webhooks.privacy_compliance]
+  customer_data_request_url = "https://live-gold-feed.vennerwp.com/api/webhooks/customers-data-request"
+  customer_deletion_url = "https://live-gold-feed.vennerwp.com/api/webhooks/customers-redact"
+  shop_deletion_url = "https://live-gold-feed.vennerwp.com/api/webhooks/shop-redact"
