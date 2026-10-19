@@ -10,6 +10,19 @@ interface Store {
   id: number; name: string; shop_domain: string; currency: string; round_to: number; default_gst_pct: number;
   auto_push: boolean; metafield_ready: boolean; last_synced_at: string | null; last_pushed_at: string | null;
   products: number; variants: number; configured: number;
+  plan?: string;
+  planDetails?: {
+    id: string;
+    name: string;
+    badge: string;
+    priceMonthly: number;
+    trialDays: number;
+    productLimit: number;
+    allowCsvBulk: boolean;
+    allowAutoSync: boolean;
+    prioritySupport: boolean;
+    tagline: string;
+  };
 }
 interface Run { id: string; trigger: string; status: string; total: number; updated: number; failed: number; message: string | null; started_at: string; finished_at: string | null }
 interface ProductRow { gid: string; title: string; handle: string; status: string; image_url: string | null; variant_count: number; configured: number; min_price: string | null; max_price: string | null }
@@ -22,6 +35,7 @@ export default function StorePage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [busy, setBusy] = useState<string>('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [planModalOpen, setPlanModalOpen] = useState(false);
 
   const loadStore = useCallback(() => api<Store>(`/api/stores/${storeId}`).then(setStore), [storeId]);
   const loadRates = useCallback(async () => {
@@ -258,12 +272,37 @@ export default function StorePage() {
         </div>
       </div>
 
-      {/* Runs */}
-      {runs.length > 0 && <RunsCard runs={runs} currency={store.currency} />}
+      <ProductsCard
+        storeId={storeId}
+        reloadKey={reloadKey}
+        currency={store.currency}
+        planDetails={store.planDetails}
+        configuredCount={store.configured}
+        onUpgrade={() => setPlanModalOpen(true)}
+        onImported={() => { loadStore(); setReloadKey((k) => k + 1); }}
+      />
 
-      <ProductsCard storeId={storeId} reloadKey={reloadKey} currency={store.currency} onImported={() => { loadStore(); setReloadKey((k) => k + 1); }} />
+      {settingsOpen && (
+        <SettingsModal
+          store={store}
+          onClose={() => setSettingsOpen(false)}
+          onOpenPlans={() => { setSettingsOpen(false); setPlanModalOpen(true); }}
+          onSaved={(s) => { setStore({ ...store, ...s }); setSettingsOpen(false); }}
+        />
+      )}
 
-      {settingsOpen && <SettingsModal store={store} onClose={() => setSettingsOpen(false)} onSaved={(s) => { setStore({ ...store, ...s }); setSettingsOpen(false); }} />}
+      {planModalOpen && (
+        <PlanModal
+          currentPlanId={store.plan}
+          onSelectPlan={async (planId) => {
+            const updated = await api<Store>(`/api/stores/${storeId}`, { method: 'PATCH', body: { plan: planId } });
+            setStore(updated);
+            toast(`Plan updated to ${updated.planDetails?.name || planId}!`);
+            setPlanModalOpen(false);
+          }}
+          onClose={() => setPlanModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -299,7 +338,23 @@ function RunsCard({ runs }: { runs: Run[]; currency: string }) {
   );
 }
 
-function ProductsCard({ storeId, reloadKey, currency, onImported }: { storeId: string; reloadKey: number; currency: string; onImported: () => void }) {
+function ProductsCard({
+  storeId,
+  reloadKey,
+  currency,
+  onImported,
+  planDetails,
+  configuredCount,
+  onUpgrade,
+}: {
+  storeId: string;
+  reloadKey: number;
+  currency: string;
+  onImported: () => void;
+  planDetails?: Store['planDetails'];
+  configuredCount?: number;
+  onUpgrade?: () => void;
+}) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(1);
@@ -326,13 +381,43 @@ function ProductsCard({ storeId, reloadKey, currency, onImported }: { storeId: s
   };
 
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const isNearLimit = planDetails && planDetails.productLimit !== Infinity && (configuredCount || 0) >= planDetails.productLimit * 0.9;
+  const isAtLimit = planDetails && planDetails.productLimit !== Infinity && (configuredCount || 0) >= planDetails.productLimit;
+
   return (
     <div className="card">
-      <div className="card-head">
-        <h2>Products</h2>
+      <div className="card-head" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ margin: 0 }}>Products</h2>
+          {planDetails && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12 }}>
+              <span className="badge" style={{ background: 'rgba(255,215,0,0.12)', color: '#ffd700', border: '1px solid rgba(255,215,0,0.3)', fontWeight: 600 }}>
+                {planDetails.name} ({planDetails.badge})
+              </span>
+              <span className={isAtLimit ? 'badge red' : isNearLimit ? 'badge amber' : 'muted'} style={{ fontSize: 11 }}>
+                {configuredCount || 0} / {planDetails.productLimit === Infinity ? 'Unlimited' : planDetails.productLimit} configured
+              </span>
+              <button
+                type="button"
+                className="btn small"
+                style={{ padding: '2px 8px', fontSize: 11, background: 'linear-gradient(135deg, #ffd700, #b8860b)', color: '#000', border: 'none', fontWeight: 600, cursor: 'pointer' }}
+                onClick={onUpgrade}
+              >
+                Change Plan
+              </button>
+            </div>
+          )}
+        </div>
         <div className="row">
           <a className="btn" href={`/api/stores/${storeId}/export`}>Export CSV</a>
-          <button onClick={() => fileRef.current?.click()}>Import CSV</button>
+          <button onClick={() => {
+            if (planDetails && !planDetails.allowCsvBulk) {
+              toast(`CSV Bulk Import is available on Growth / Pro Plan. Please upgrade your plan.`, true);
+              onUpgrade?.();
+              return;
+            }
+            fileRef.current?.click();
+          }}>Import CSV</button>
           <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importCsv(f); e.target.value = ''; }} />
         </div>
       </div>
@@ -389,7 +474,7 @@ function ProductsCard({ storeId, reloadKey, currency, onImported }: { storeId: s
   );
 }
 
-function SettingsModal({ store, onClose, onSaved }: { store: Store; onClose: () => void; onSaved: (s: Partial<Store>) => void }) {
+function SettingsModal({ store, onClose, onSaved, onOpenPlans }: { store: Store; onClose: () => void; onSaved: (s: Partial<Store>) => void; onOpenPlans?: () => void }) {
   const [f, setF] = useState({
     name: store.name,
     default_gst_pct: String(store.default_gst_pct),
@@ -446,6 +531,22 @@ function SettingsModal({ store, onClose, onSaved }: { store: Store; onClose: () 
       }
     >
       <div className="grid">
+        <div style={{ padding: '12px 14px', background: 'rgba(255,215,0,0.06)', border: '1px solid rgba(255,215,0,0.2)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13, color: '#fff' }}>
+              Subscription: <span style={{ color: '#ffd700' }}>{store.planDetails?.name || 'Starter Plan'}</span> ({store.planDetails?.badge || '$19 / mo'})
+            </div>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+              Limit: {store.planDetails?.productLimit === Infinity ? 'Unlimited' : `${store.planDetails?.productLimit || 250} products`} ({store.configured} configured)
+            </div>
+          </div>
+          {onOpenPlans && (
+            <button type="button" className="btn small" onClick={onOpenPlans} style={{ background: 'linear-gradient(135deg, #ffd700, #b8860b)', color: '#000', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+              Upgrade Plan
+            </button>
+          )}
+        </div>
+
         <Field label="Display name">
           <input className="plain" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         </Field>
@@ -481,6 +582,130 @@ function SettingsModal({ store, onClose, onSaved }: { store: Store; onClose: () 
             </Field>
           </div>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function PlanModal({
+  currentPlanId,
+  onSelectPlan,
+  onClose,
+}: {
+  currentPlanId?: string;
+  onSelectPlan: (planId: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState<string | null>(null);
+
+  const plans = [
+    {
+      id: 'starter',
+      name: 'Starter Plan',
+      price: '$19',
+      period: '/ month',
+      limit: '250 products',
+      desc: 'Ideal for boutique & small jewelers',
+      features: ['Up to 250 jewelry products', 'Daily 24K gold rate sync', 'Standard price breakup widget', 'Email support'],
+      popular: false,
+    },
+    {
+      id: 'pro',
+      name: 'Growth / Pro Plan',
+      price: '$49',
+      period: '/ month',
+      limit: '2,000 products',
+      desc: 'Most popular for expanding jewelry brands',
+      features: ['Up to 2,000 jewelry products', 'Gold, Silver & Platinum rates', 'CSV Bulk Import & Export', 'Automated background sync'],
+      popular: true,
+    },
+    {
+      id: 'enterprise',
+      name: 'Enterprise Plan',
+      price: '$99',
+      period: '/ month',
+      limit: 'Unlimited products',
+      desc: 'For multi-store retailers & manufacturers',
+      features: ['Unlimited jewelry products', 'All metal purities supported', 'Instant priority price sync', 'Priority WhatsApp & Email support'],
+      popular: false,
+    },
+  ];
+
+  const handleSelect = async (planId: string) => {
+    setLoading(planId);
+    try {
+      await onSelectPlan(planId);
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  return (
+    <Modal title="Choose Your Subscription Plan" onClose={onClose}>
+      <p style={{ margin: '0 0 20px', color: '#94a3b8', fontSize: 14 }}>
+        Select the plan that matches your jewelry catalog size. Every plan includes real-time rate calculation, custom markup, and live product page breakup.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+        {plans.map((p) => {
+          const isCurrent = currentPlanId === p.id || (!currentPlanId && p.id === 'starter');
+          return (
+            <div
+              key={p.id}
+              style={{
+                background: '#0d131f',
+                border: isCurrent ? '2px solid #ffd700' : p.popular ? '1px solid rgba(255,215,0,0.4)' : '1px solid #1f2937',
+                borderRadius: 12,
+                padding: '20px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                position: 'relative',
+              }}
+            >
+              {p.popular && !isCurrent && (
+                <div style={{ position: 'absolute', top: -10, right: 14, background: '#ffd700', color: '#000', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
+                  POPULAR
+                </div>
+              )}
+              {isCurrent && (
+                <div style={{ position: 'absolute', top: -10, right: 14, background: '#10b981', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
+                  ACTIVE PLAN
+                </div>
+              )}
+              <h3 style={{ margin: '0 0 4px', fontSize: 16, color: '#fff' }}>{p.name}</h3>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>{p.desc}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 16 }}>
+                <span style={{ fontSize: 26, fontWeight: 700, color: '#ffd700' }}>{p.price}</span>
+                <span style={{ fontSize: 12, color: '#64748b' }}>{p.period}</span>
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid #1f2937' }}>
+                ⚡ {p.limit}
+              </div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 20px', flex: 1, fontSize: 12, color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {p.features.map((f, i) => (
+                  <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#10b981' }}>✓</span> {f}
+                  </li>
+                ))}
+              </ul>
+              <button
+                disabled={isCurrent || loading !== null}
+                onClick={() => handleSelect(p.id)}
+                className={`btn ${isCurrent ? '' : 'primary'}`}
+                style={{
+                  width: '100%',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  background: isCurrent ? '#1e293b' : 'linear-gradient(135deg, #ffd700, #b8860b)',
+                  color: isCurrent ? '#94a3b8' : '#000',
+                  border: 'none',
+                  cursor: isCurrent ? 'default' : 'pointer',
+                }}
+              >
+                {loading === p.id ? 'Updating…' : isCurrent ? 'Current Plan' : 'Select Plan'}
+              </button>
+            </div>
+          );
+        })}
       </div>
     </Modal>
   );

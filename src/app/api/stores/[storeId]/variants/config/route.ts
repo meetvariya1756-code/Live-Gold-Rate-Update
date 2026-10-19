@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
-import { q } from '@/lib/db';
+import { q, one } from '@/lib/db';
 import { handler, json, err, Ctx } from '@/lib/api';
 import { sanitizeConfig, saveVariantConfig } from '@/lib/services';
 import { requireStoreAccess } from '@/lib/auth';
+import { checkStoreProductLimit } from '@/lib/plans';
 
 export const dynamic = 'force-dynamic';
 type P = { storeId: string };
@@ -15,6 +16,21 @@ export const PUT = handler(async (req: NextRequest, { params }: Ctx<P>) => {
   const body = await req.json();
   const items = Array.isArray(body.items) ? body.items : [];
   if (!items.length) return err('items[] required');
+
+  // Enforce plan product limits
+  const firstGid = String(items[0].variant_gid);
+  const variantRow = await one<{ product_gid: string }>(
+    'SELECT product_gid FROM variants WHERE store_id = $1 AND gid = $2',
+    [id, firstGid],
+  );
+
+  if (variantRow?.product_gid) {
+    const limitCheck = await checkStoreProductLimit(id, variantRow.product_gid);
+    if (!limitCheck.allowed) {
+      return err(limitCheck.message || 'Product limit reached for your current plan.', 403);
+    }
+  }
+
   const results = [];
   for (const it of items) {
     const cfg = sanitizeConfig(it.config);

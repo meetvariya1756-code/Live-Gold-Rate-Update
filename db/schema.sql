@@ -55,6 +55,12 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='refresh_token_enc') THEN
     ALTER TABLE stores ADD COLUMN refresh_token_enc TEXT;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='plan') THEN
+    ALTER TABLE stores ADD COLUMN plan TEXT NOT NULL DEFAULT 'starter';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='subscription_id') THEN
+    ALTER TABLE stores ADD COLUMN subscription_id TEXT;
+  END IF;
 END $$;
 
 -- One row per metal / purity per store. rate = price per gram in store currency.

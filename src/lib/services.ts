@@ -28,6 +28,8 @@ export interface StoreRow {
   access_token_enc: string | null;
   refresh_token_enc?: string | null;
   token_expires_at: string | null;
+  plan?: string;
+  subscription_id?: string | null;
   currency: string;
   round_to: string;
   default_gst_pct: string;

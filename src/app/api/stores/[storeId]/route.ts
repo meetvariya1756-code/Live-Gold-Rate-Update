@@ -5,6 +5,7 @@ import { handler, json, err, Ctx } from '@/lib/api';
 import { getStore, publicStore } from '@/lib/services';
 import { getShopInfo, fetchAccessTokenWithClientCredentials } from '@/lib/shopify';
 import { requireStoreAccess, getCurrentUser } from '@/lib/auth';
+import { getPlan } from '@/lib/plans';
 
 export const dynamic = 'force-dynamic';
 type P = { storeId: string };
@@ -20,10 +21,11 @@ export const GET = handler(async (req: NextRequest, { params }: Ctx<P>) => {
   const [stats] = await q(
     `SELECT (SELECT COUNT(*) FROM products WHERE store_id=$1)::int AS products,
             (SELECT COUNT(*) FROM variants WHERE store_id=$1)::int AS variants,
-            (SELECT COUNT(*) FROM variant_configs c JOIN variants v ON v.store_id=c.store_id AND v.gid=c.variant_gid WHERE c.store_id=$1)::int AS configured`,
+            (SELECT COUNT(DISTINCT v.product_gid) FROM variant_configs c JOIN variants v ON v.store_id=c.store_id AND v.gid=c.variant_gid WHERE c.store_id=$1)::int AS configured`,
     [s.id],
   );
-  return json({ ...publicStore(s), ...stats });
+  const planDetails = getPlan(s.plan);
+  return json({ ...publicStore(s), ...stats, planDetails });
 });
 
 // Update settings: { name?, default_gst_pct?, round_to?, auto_push?, client_id?, client_secret?, access_token?, client_user_id? }
@@ -68,13 +70,19 @@ export const PATCH = handler(async (req: NextRequest, { params }: Ctx<P>) => {
     await q('UPDATE stores SET client_user_id=$2 WHERE id=$1', [s.id, clientUserId]);
   }
 
+  if (b.plan && ['trial', 'starter', 'pro', 'enterprise'].includes(b.plan)) {
+    await q('UPDATE stores SET plan=$2 WHERE id=$1', [s.id, b.plan]);
+  }
+
   await q(
     `UPDATE stores SET name=COALESCE($2,name), default_gst_pct=COALESCE($3,default_gst_pct),
        round_to=COALESCE($4,round_to), auto_push=COALESCE($5,auto_push) WHERE id=$1`,
     [s.id, b.name ?? null, b.default_gst_pct ?? null, b.round_to ?? null, typeof b.auto_push === 'boolean' ? b.auto_push : null],
   );
 
-  return json(publicStore((await getStore(s.id))!));
+  const updatedStore = await getStore(s.id);
+  const planDetails = getPlan(updatedStore?.plan);
+  return json({ ...publicStore(updatedStore!), planDetails });
 });
 
 export const DELETE = handler(async (req: NextRequest, { params }: Ctx<P>) => {
