@@ -34,7 +34,8 @@ export async function middleware(req: NextRequest) {
 
   // If request contains Shopify 'shop' parameter, seamlessly authenticate without login prompt
   const shop = searchParams.get('shop');
-  if (shop && !pathname.startsWith('/api/')) {
+  const isAuthed = searchParams.get('authed') === '1';
+  if (shop && !pathname.startsWith('/api/') && !pathname.startsWith('/stores/') && !isAuthed) {
     const incomingHost = (req.headers.get('x-forwarded-host') || req.headers.get('host') || '').toLowerCase();
     let appBase = process.env.SHOPIFY_APP_URL?.trim().replace(/\/$/, '') || '';
     if (incomingHost.includes('live-gold-feed.vennerwp.com') || (appBase.includes('trycloudflare.com') && !incomingHost.includes('trycloudflare.com'))) {

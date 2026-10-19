@@ -82,6 +82,7 @@ export async function GET(req: NextRequest) {
   if (host) targetUrl.searchParams.set('host', host);
   if (embedded) targetUrl.searchParams.set('embedded', embedded);
   targetUrl.searchParams.set('shop', domain);
+  targetUrl.searchParams.set('authed', '1');
 
   const res = NextResponse.redirect(targetUrl);
   res.cookies.set(SESSION_COOKIE, sessionToken, {

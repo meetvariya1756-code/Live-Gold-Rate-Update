@@ -22,19 +22,39 @@ export default function StorePage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [busy, setBusy] = useState<string>('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadStore = useCallback(() => api<Store>(`/api/stores/${storeId}`).then(setStore), [storeId]);
+  const loadStore = useCallback(
+    () =>
+      api<Store>(`/api/stores/${storeId}`)
+        .then((s) => {
+          setStore(s);
+          setLoadError(null);
+        })
+        .catch((e) => {
+          setLoadError(e.message);
+        }),
+    [storeId],
+  );
+
   const loadRates = useCallback(async () => {
-    const r = await api<{ rates: MetalRate[] }>(`/api/stores/${storeId}/rates`);
-    setRates(r.rates);
-    setSavedRates(JSON.stringify(r.rates.map((x) => [x.key, x.rate, x.auto])));
+    try {
+      const r = await api<{ rates: MetalRate[] }>(`/api/stores/${storeId}/rates`);
+      if (r?.rates) {
+        setRates(r.rates);
+        setSavedRates(JSON.stringify(r.rates.map((x) => [x.key, x.rate, x.auto])));
+      }
+    } catch {}
   }, [storeId]);
-  const loadRuns = useCallback(() => api<Run[]>(`/api/stores/${storeId}/runs`).then(setRuns), [storeId]);
+
+  const loadRuns = useCallback(() => {
+    api<Run[]>(`/api/stores/${storeId}/runs`).then(setRuns).catch(() => {});
+  }, [storeId]);
 
   useEffect(() => {
-    loadStore().catch((e) => toast(e.message, true));
-    loadRates().catch((e) => toast(e.message, true));
-    loadRuns().catch(() => {});
+    loadStore();
+    loadRates();
+    loadRuns();
   }, [loadStore, loadRates, loadRuns]);
 
   // Poll while a price update is running
@@ -127,6 +147,28 @@ export default function StorePage() {
         .finally(() => setBusy(''));
     }
   }, [store?.id, store?.products]);
+
+  if (loadError) {
+    return (
+      <div className="page" style={{ padding: '60px 20px', maxWidth: 540, margin: '0 auto', textAlign: 'center' }}>
+        <div className="card" style={{ padding: '32px 24px', borderRadius: 12, boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: '#303030' }}>Connection Notice</h2>
+          <p style={{ color: '#616161', fontSize: 13, lineHeight: 1.5, marginBottom: 20 }}>{loadError}</p>
+          <button
+            className="primary"
+            onClick={() => {
+              setLoadError(null);
+              loadStore();
+              loadRates();
+            }}
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!store) return <div className="page"><div className="empty"><Spinner /> Connecting to store…</div></div>;
   const pct = store.variants ? Math.round((store.configured / store.variants) * 100) : 0;

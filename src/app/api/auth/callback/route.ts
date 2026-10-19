@@ -136,11 +136,22 @@ export async function GET(req: NextRequest) {
       name: shopName,
     });
 
-    // 9. Redirect merchant directly to their store pricing dashboard
-    const targetUrl = new URL(`/stores/${storeId}`, getAppBaseUrl(req));
-    if (host) targetUrl.searchParams.set('host', host);
-    targetUrl.searchParams.set('shop', domain);
-    targetUrl.searchParams.set('installed', 'true');
+    // 9. Redirect merchant directly to their Shopify Admin embedded app URL!
+    let adminAppUrl = `https://${domain}/admin/apps/gold-rate-price`;
+    if (host) {
+      try {
+        const decodedHost = Buffer.from(host, 'base64').toString('ascii');
+        if (decodedHost.includes('admin.shopify.com')) {
+          adminAppUrl = `https://${decodedHost}/apps/gold-rate-price`;
+        }
+      } catch {}
+    }
+
+    const fallbackUrl = new URL(`/stores/${storeId}`, getAppBaseUrl(req));
+    if (host) fallbackUrl.searchParams.set('host', host);
+    fallbackUrl.searchParams.set('shop', domain);
+    fallbackUrl.searchParams.set('installed', 'true');
+    fallbackUrl.searchParams.set('authed', '1');
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -181,14 +192,26 @@ export async function GET(req: NextRequest) {
     p { margin: 0 0 16px; font-size: 14px; color: #94a3b8; line-height: 1.5; }
   </style>
   <script>
-    window.location.href = ${JSON.stringify(targetUrl.toString())};
+    (function() {
+      var adminUrl = ${JSON.stringify(adminAppUrl)};
+      var fallback = ${JSON.stringify(fallbackUrl.toString())};
+      try {
+        if (window.top && window.top !== window.self) {
+          window.top.location.href = adminUrl;
+        } else {
+          window.location.href = adminUrl;
+        }
+      } catch (e) {
+        window.location.href = fallback;
+      }
+    })();
   </script>
 </head>
 <body>
   <div class="card">
     <div class="spinner"></div>
     <h2>Store Connected Successfully!</h2>
-    <p>Synchronizing your catalog products and live gold rates now. Opening your dashboard…</p>
+    <p>Synchronizing your catalog products and live gold rates now. Opening Shopify Admin…</p>
   </div>
 </body>
 </html>`;

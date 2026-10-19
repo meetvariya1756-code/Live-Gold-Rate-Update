@@ -45,7 +45,20 @@ export function TopBar() {
     return () => clearInterval(interval);
   }, [user]);
 
-  if (path === '/login') return null;
+  const [isEmbedded, setIsEmbedded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const inIframe = window.top !== window.self;
+      const params = new URLSearchParams(window.location.search);
+      const hasEmbedded = params.get('embedded') === '1' || !!params.get('host');
+      if (inIframe || hasEmbedded) {
+        setIsEmbedded(true);
+      }
+    }
+  }, []);
+
+  if (path === '/login' || isEmbedded || user?.role === 'client') return null;
 
   return (
     <>

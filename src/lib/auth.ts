@@ -42,11 +42,16 @@ export async function requireStoreAccess(storeId: number, req?: NextRequest): Pr
   const user = await requireAuth(req);
   if (user.role === 'admin') return user;
 
-  const store = await one<{ id: number; client_user_id: number | null }>(
-    'SELECT id, client_user_id FROM stores WHERE id = $1',
+  const store = await one<{ id: number; client_user_id: number | null; shop_domain: string }>(
+    'SELECT id, client_user_id, shop_domain FROM stores WHERE id = $1',
     [storeId]
   );
-  if (!store || store.client_user_id !== user.userId) {
+  if (!store) {
+    throw new AuthError('Store not found.', 404);
+  }
+  const isOwner = store.client_user_id === user.userId;
+  const isMatchingDomain = store.shop_domain?.toLowerCase() === user.username?.toLowerCase();
+  if (!isOwner && !isMatchingDomain) {
     throw new AuthError('You do not have access to this store.', 403);
   }
   return user;
