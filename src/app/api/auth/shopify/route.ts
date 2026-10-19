@@ -72,19 +72,35 @@ export async function GET(req: NextRequest) {
     @keyframes spin { to { transform: rotate(360deg); } }
     h2 { margin: 0 0 10px; font-size: 19px; font-weight: 600; color: #fff; }
     p { margin: 0 0 16px; font-size: 14px; color: #94a3b8; line-height: 1.5; }
-    a { color: #ffd700; text-decoration: none; font-weight: 500; font-size: 13px; }
+    .btn-install {
+      display: inline-block;
+      background: linear-gradient(135deg, #ffd700, #b8860b);
+      color: #0b0f19 !important;
+      font-weight: 700;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      margin-top: 16px;
+      box-shadow: 0 4px 12px rgba(255, 215, 0, 0.25);
+      font-size: 14px;
+      cursor: pointer;
+    }
   </style>
   <script>
     (function() {
       var target = ${JSON.stringify(authUrl)};
+      var isIframe = false;
       try {
-        if (window.top && window.top !== window.self) {
+        isIframe = window.top && window.top !== window.self;
+        if (isIframe) {
           window.top.location.href = target;
         } else {
           window.location.href = target;
         }
       } catch (e) {
-        window.location.href = target;
+        // Top navigation blocked by sandbox without user activation. Show install button.
+        var btn = document.getElementById('manual-btn');
+        if (btn) btn.style.display = 'inline-block';
       }
     })();
   </script>
@@ -92,9 +108,13 @@ export async function GET(req: NextRequest) {
 <body>
   <div class="card">
     <div class="spinner"></div>
-    <h2>Connecting to ${domain}…</h2>
-    <p>Authorizing access to synchronize live gold rates and catalog products automatically.</p>
-    <p>If you are not redirected automatically, <a href="${authUrl}" target="_top">click here to proceed</a>.</p>
+    <h2>Install Live Gold Feed</h2>
+    <p>Authorize access to synchronize live gold rates and update variant prices automatically.</p>
+    <div>
+      <a id="manual-btn" href="${authUrl}" target="_top" class="btn-install">
+        👉 Click Here to Install & Authorize
+      </a>
+    </div>
   </div>
 </body>
 </html>`;
