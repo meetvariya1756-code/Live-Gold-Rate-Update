@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy & GDPR Compliance — LiveGold Feed',
-  description: 'Privacy Policy and Data Protection Compliance for LiveGold Feed Shopify Application.',
+  title: 'Privacy Policy & GDPR Compliance — Live Gold Feed',
+  description: 'Privacy Policy and Data Protection Compliance for Live Gold Feed Shopify Application.',
 };
 
 export default function PrivacyPolicyPage() {
@@ -15,21 +15,21 @@ export default function PrivacyPolicyPage() {
           </div>
           <div>
             <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#fff', margin: 0 }}>Privacy Policy & GDPR Compliance</h1>
-            <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>LiveGold Feed for Shopify · Last Updated: October 2026</p>
+            <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>Live Gold Feed for Shopify · Last Updated: October 2026</p>
           </div>
         </div>
 
         <section style={{ borderBottom: '1px solid #1f2937', paddingBottom: '20px', marginBottom: '20px' }}>
           <h2 style={{ fontSize: '18px', color: '#ffd700', marginTop: 0 }}>1. Introduction & Overview</h2>
           <p style={{ fontSize: '14px', lineHeight: '1.6', color: '#cbd5e1' }}>
-            LiveGold Feed (&quot;we&quot;, &quot;our&quot;, or &quot;the App&quot;) is developed by Venner Infotech &amp; Marketing Solution to provide Shopify merchants with automated jewelry and precious metal pricing. We take privacy, data protection, and transparency extremely seriously. This policy explains our data handling practices and adherence to global privacy laws, including the European General Data Protection Regulation (GDPR) and the California Consumer Privacy Act (CCPA).
+            Live Gold Feed (&quot;we&quot;, &quot;our&quot;, or &quot;the App&quot;) is developed by Venner Infotech &amp; Marketing Solution to provide Shopify merchants with automated jewelry and precious metal pricing. We take privacy, data protection, and transparency extremely seriously. This policy explains our data handling practices and adherence to global privacy laws, including the European General Data Protection Regulation (GDPR) and the California Consumer Privacy Act (CCPA).
           </p>
         </section>
 
         <section style={{ borderBottom: '1px solid #1f2937', paddingBottom: '20px', marginBottom: '20px' }}>
           <h2 style={{ fontSize: '18px', color: '#ffd700', marginTop: 0 }}>2. Zero End-Customer Personal Data Policy (PII)</h2>
           <p style={{ fontSize: '14px', lineHeight: '1.6', color: '#cbd5e1' }}>
-            <strong>LiveGold Feed does NOT collect, process, or store personally identifiable information (PII) of your end-customers or store visitors.</strong>
+            <strong>Live Gold Feed does NOT collect, process, or store personally identifiable information (PII) of your end-customers or store visitors.</strong>
           </p>
           <ul style={{ fontSize: '14px', lineHeight: '1.6', color: '#94a3b8', paddingLeft: '20px' }}>
             <li>We do not collect names, email addresses, phone numbers, or physical addresses of customers.</li>
@@ -56,7 +56,7 @@ export default function PrivacyPolicyPage() {
             In full compliance with Shopify Developer requirements, our application implements all mandatory GDPR webhooks with cryptographically verified HMAC signatures:
           </p>
           <div style={{ background: '#0b0f19', borderRadius: '8px', padding: '16px', border: '1px solid #1e293b', marginBottom: '16px' }}>
-            <p style={{ margin: '0 0 8px', fontSize: '13px' }}><strong>• Customers Data Request (<code>/api/webhooks/customers-data-request</code>):</strong> When a customer requests their data from Shopify, our endpoint confirms that LiveGold Feed does not hold any customer PII.</p>
+            <p style={{ margin: '0 0 8px', fontSize: '13px' }}><strong>• Customers Data Request (<code>/api/webhooks/customers-data-request</code>):</strong> When a customer requests their data from Shopify, our endpoint confirms that Live Gold Feed does not hold any customer PII.</p>
             <p style={{ margin: '0 0 8px', fontSize: '13px' }}><strong>• Customers Redact (<code>/api/webhooks/customers-redact</code>):</strong> When a merchant or customer requests data erasure, our endpoint automatically acknowledges erasure compliance.</p>
             <p style={{ margin: 0, fontSize: '13px' }}><strong>• Shop Redact (<code>/api/webhooks/shop-redact</code>):</strong> 48 hours after an app uninstall, our endpoint permanently wipes all encrypted API access tokens and merchant credentials from our database.</p>
           </div>
