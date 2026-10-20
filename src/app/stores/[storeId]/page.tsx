@@ -15,7 +15,8 @@ interface Run { id: string; trigger: string; status: string; total: number; upda
 interface ProductRow { gid: string; title: string; handle: string; status: string; image_url: string | null; variant_count: number; configured: number; min_price: string | null; max_price: string | null }
 
 export default function StorePage() {
-  const { storeId } = useParams<{ storeId: string }>();
+  const params = useParams();
+  const storeId = params?.storeId ? String(params.storeId) : '';
   const [store, setStore] = useState<Store | null>(null);
   const [rates, setRates] = useState<MetalRate[]>([]);
   const [savedRates, setSavedRates] = useState<string>('');
@@ -24,20 +25,20 @@ export default function StorePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadStore = useCallback(
-    () =>
-      api<Store>(`/api/stores/${storeId}`)
-        .then((s) => {
-          setStore(s);
-          setLoadError(null);
-        })
-        .catch((e) => {
-          setLoadError(e.message);
-        }),
-    [storeId],
-  );
+  const loadStore = useCallback(() => {
+    if (!storeId) return Promise.resolve();
+    return api<Store>(`/api/stores/${storeId}`)
+      .then((s) => {
+        setStore(s);
+        setLoadError(null);
+      })
+      .catch((e) => {
+        setLoadError(e.message);
+      });
+  }, [storeId]);
 
   const loadRates = useCallback(async () => {
+    if (!storeId) return;
     try {
       const r = await api<{ rates: MetalRate[] }>(`/api/stores/${storeId}/rates`);
       if (r?.rates) {
@@ -48,14 +49,17 @@ export default function StorePage() {
   }, [storeId]);
 
   const loadRuns = useCallback(() => {
+    if (!storeId) return;
     api<Run[]>(`/api/stores/${storeId}/runs`).then(setRuns).catch(() => {});
   }, [storeId]);
 
   useEffect(() => {
-    loadStore();
-    loadRates();
-    loadRuns();
-  }, [loadStore, loadRates, loadRuns]);
+    if (storeId) {
+      loadStore();
+      loadRates();
+      loadRuns();
+    }
+  }, [storeId, loadStore, loadRates, loadRuns]);
 
   // Poll while a price update is running
   const running = runs.find((r) => r.status === 'running');
